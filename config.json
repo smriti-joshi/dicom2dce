@@ -1,0 +1,105 @@
+{
+  "filtering": {
+    "tr_te": {
+      "max_tr": 15,
+      "max_te": 15,
+      "description": "Maximum RepetitionTime and EchoTime values in milliseconds"
+    },
+    "image_type_exclusions": {
+      "values": [
+        "DERIVED",
+        "SECONDARY",
+        "SCREEN SAVE",
+        "LOCALIZER",
+        "SCOUT",
+        "PROJECTION IMAGE",
+        "MONTAGE",
+        "MPR",
+        "SUBTRACT"
+      ],
+      "description": "Image types to exclude from filtering"
+    },
+    "series_desc_exclusions": {
+      "values": [
+        "t2",
+        "adc",
+        "dwi",
+        "sdyn",
+        "loc",
+        "sub",
+        "survey",
+        "rec",
+        "sustraccion",
+        "test",
+        "wi",
+        "wo",
+        "pei",
+        "scout",
+        "pos",
+        "ref",
+        "cal",
+        "shimming",
+        "mip",
+        "mpr",
+        "map",
+        "normalized",
+        "nd"
+      ],
+      "description": "Series description substrings to exclude from filtering"
+    },
+    "similarity_threshold": {
+      "value": 0.8,
+      "description": "Minimum similarity threshold (0.0-1.0) for sequence descriptions within a group"
+    },
+    "contrast_agent_tags": {
+      "values": [
+        "ContrastBolusAgent",
+        "ContrastBolusStartTime",
+        "ContrastBolusVolume"
+      ],
+      "description": "DICOM tags used to identify contrast agent presence"
+    },
+    "dynamic_markers": {
+      "values": [
+        "dyn",
+        "din",
+        "lava",
+        "thrive",
+        "vibe"
+      ],
+      "description": "Series description keywords indicating dynamic/temporal sequences"
+    },
+    "keep_largest_size_group": {
+      "value": true,
+      "description": "When multiple image sizes exist, keep only the size group with most files"
+    }
+  },
+  "consistency_checks": {
+    "min_slice_count": {
+      "value": 20,
+      "description": "Minimum acceptable number of slices per temporal position"
+    },
+    "min_temporal_positions": {
+      "value": 2,
+      "description": "Minimum number of temporal positions (phases) required"
+    },
+    "folder_name_similarity_threshold": {
+      "value": 0.9,
+      "description": "Minimum similarity threshold (0.0-1.0) for folder names across sequences"
+    }
+  },
+  "processing": {
+    "stop_before_pixels": {
+      "value": true,
+      "description": "Whether to stop reading DICOM files before pixel data (faster, but less complete)"
+    },
+    "dicom_extension": {
+      "value": ".dcm",
+      "description": "File extension for DICOM files"
+    },
+    "natural_sorting": {
+      "enabled": true,
+      "description": "Enable natural sorting (e.g., '2' before '10') for file ordering"
+    }
+  }
+}

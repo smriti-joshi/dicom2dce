@@ -7,6 +7,19 @@ import re
 from difflib import SequenceMatcher
 
 
+def load_config(config_path=None):
+    """Load configuration from JSON file"""
+    if config_path is None:
+        # Default to config.json in the same directory as this script
+        config_path = os.path.join(os.path.dirname(__file__), "config.json")
+    
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+    
+    with open(config_path, "r") as f:
+        return json.load(f)
+
+
 def natural_sort_key(s):
     """
     Returns a key that allows for natural sorting (e.g., '2' before '10').
@@ -16,20 +29,100 @@ def natural_sort_key(s):
 
 
 class FilterConfig:
-    """Configuration for DCE filtering"""
-    MAX_TR = 15
-    MAX_TE = 15
-    IMAGE_TYPE_EXCLUSIONS = ["DERIVED", "SECONDARY", "SCREEN SAVE", "LOCALIZER", "SCOUT", "PROJECTION IMAGE", "MONTAGE", "MPR", "SUBTRACT"]
-    SERIES_DESC_EXCLUSIONS = ["t2", "adc", "dwi", "sdyn", "loc", "sub", "survey", "rec", 
-                              "sustraccion", "test", "wi", "wo", "pei",    
-                              "scout", "pos", "ref", "cal", "shimming", 
-                              "mip", "mpr", "map", "normalized", "nd"]   
-    SIMILARITY_THRESHOLD = 0.8
-    CONTRAST_AGENT_TAGS = ["ContrastBolusAgent", "ContrastBolusStartTime", "ContrastBolusVolume"]
-    # Dynamic/temporal sequence markers - if any series has these, filter out the rest
-    DYNAMIC_MARKERS = ["dyn", "din", "lava", "thrive", "vibe"]
-    # When multiple image sizes exist, keep the one with most files
-    KEEP_LARGEST_SIZE_GROUP = True
+    """Configuration for DCE filtering - loaded from config.json"""
+    
+    _config = None
+    
+    @classmethod
+    def load(cls, config_path=None):
+        """Load configuration from file"""
+        cls._config = load_config(config_path)
+    
+    @classmethod
+    def _ensure_loaded(cls):
+        """Ensure config is loaded before access"""
+        if cls._config is None:
+            cls.load()
+    
+    @classmethod
+    def get_config(cls):
+        """Get the entire config dictionary"""
+        cls._ensure_loaded()
+        return cls._config
+    
+    # TR/TE limits (in milliseconds)
+    @classmethod
+    def get_max_tr(cls):
+        cls._ensure_loaded()
+        return cls._config["filtering"]["tr_te"]["max_tr"]
+    
+    @classmethod
+    def get_max_te(cls):
+        cls._ensure_loaded()
+        return cls._config["filtering"]["tr_te"]["max_te"]
+    
+    # Image type exclusions
+    @classmethod
+    def get_image_type_exclusions(cls):
+        cls._ensure_loaded()
+        return cls._config["filtering"]["image_type_exclusions"]["values"]
+    
+    # Series description exclusions
+    @classmethod
+    def get_series_desc_exclusions(cls):
+        cls._ensure_loaded()
+        return cls._config["filtering"]["series_desc_exclusions"]["values"]
+    
+    # Similarity thresholds
+    @classmethod
+    def get_similarity_threshold(cls):
+        cls._ensure_loaded()
+        return cls._config["filtering"]["similarity_threshold"]["value"]
+    
+    @classmethod
+    def get_folder_name_similarity_threshold(cls):
+        cls._ensure_loaded()
+        return cls._config["consistency_checks"]["folder_name_similarity_threshold"]["value"]
+    
+    # Contrast agent tags
+    @classmethod
+    def get_contrast_agent_tags(cls):
+        cls._ensure_loaded()
+        return cls._config["filtering"]["contrast_agent_tags"]["values"]
+    
+    # Dynamic markers
+    @classmethod
+    def get_dynamic_markers(cls):
+        cls._ensure_loaded()
+        return cls._config["filtering"]["dynamic_markers"]["values"]
+    
+    # Size handling
+    @classmethod
+    def keep_largest_size_group(cls):
+        cls._ensure_loaded()
+        return cls._config["filtering"]["keep_largest_size_group"]["value"]
+    
+    # Consistency checks
+    @classmethod
+    def get_min_slice_count(cls):
+        cls._ensure_loaded()
+        return cls._config["consistency_checks"]["min_slice_count"]["value"]
+    
+    @classmethod
+    def get_min_temporal_positions(cls):
+        cls._ensure_loaded()
+        return cls._config["consistency_checks"]["min_temporal_positions"]["value"]
+    
+    # Processing options
+    @classmethod
+    def stop_before_pixels(cls):
+        cls._ensure_loaded()
+        return cls._config["processing"]["stop_before_pixels"]["value"]
+    
+    @classmethod
+    def get_dicom_extension(cls):
+        cls._ensure_loaded()
+        return cls._config["processing"]["dicom_extension"]["value"]
 
 
 class FilteringStage:
@@ -64,7 +157,7 @@ class FilteringStage:
         """Check if DICOM file has contrast agent markers"""
         try:
             ds = pydicom.dcmread(dcm_path, stop_before_pixels=True)
-            for tag in FilterConfig.CONTRAST_AGENT_TAGS:
+            for tag in FilterConfig.get_contrast_agent_tags():
                 if ds.get(tag) is not None:
                     return True
             return False
@@ -84,7 +177,7 @@ class FilteringStage:
                 tr_val = float(tr) if tr != "None" else float('inf')
                 te_val = float(te) if te != "None" else float('inf')
                 
-                if tr_val <= FilterConfig.MAX_TR and te_val <= FilterConfig.MAX_TE:
+                if tr_val <= FilterConfig.get_max_tr() and te_val <= FilterConfig.get_max_te():
                     filtered.append(entry)
             except (ValueError, TypeError):
                 filtered.append(entry)  # Keep if can't parse
@@ -126,7 +219,7 @@ class FilteringStage:
                 if isinstance(image_type, str):
                     image_type = image_type.split("\\")
                 
-                if any(tag in str(image_type).upper() for tag in FilterConfig.IMAGE_TYPE_EXCLUSIONS):
+                if any(tag in str(image_type).upper() for tag in FilterConfig.get_image_type_exclusions()):
                     continue
                 
                 filtered.append(entry)
@@ -144,7 +237,7 @@ class FilteringStage:
             desc = str(entry.get("SeriesDescription", "")).lower()
             
             # Check if any exclusion substring is in description
-            if any(substr in desc for substr in FilterConfig.SERIES_DESC_EXCLUSIONS):
+            if any(substr in desc for substr in FilterConfig.get_series_desc_exclusions()):
                 continue
             
             filtered.append(entry)
@@ -168,7 +261,7 @@ class FilteringStage:
     @staticmethod
     def filter_step5_size_consistency(metadata_list):
         """Step 5: Handle multiple image sizes - keep only the size group with most files"""
-        if not FilterConfig.KEEP_LARGEST_SIZE_GROUP:
+        if not FilterConfig.keep_largest_size_group():
             return metadata_list
         
         # Group by image dimensions
@@ -214,7 +307,7 @@ class FilteringStage:
             series_desc = str(entry.get("SeriesDescription", "")).lower()
             
             # Check for any dynamic marker
-            if any(marker in series_desc for marker in FilterConfig.DYNAMIC_MARKERS):
+            if any(marker in series_desc for marker in FilterConfig.get_dynamic_markers()):
                 has_dynamic.append(entry)
             else:
                 no_dynamic.append(entry)
@@ -308,7 +401,7 @@ class FilteringStage:
             group_dce_status[group_name] = (has_dyn or has_contrast)
             
             # Handle low similarity case
-            if similarity < FilterConfig.SIMILARITY_THRESHOLD:
+            if similarity < FilterConfig.get_similarity_threshold():
                 if dce_marked_entries:
                     # Low similarity but has DCE markers - keep only DCE-marked sequences
                     entries_sorted = dce_marked_entries
@@ -318,7 +411,7 @@ class FilteringStage:
                     group_flags.append(f"low_similarity:{similarity:.2f}")
             
             # Flag if no DCE markers at all (only if similarity was acceptable)
-            if not has_dyn and not has_contrast and similarity >= FilterConfig.SIMILARITY_THRESHOLD:
+            if not has_dyn and not has_contrast and similarity >= FilterConfig.get_similarity_threshold():
                 group_flags.append("no_dyn_or_contrast_markers")
             
             # Add entries with FLAG key
@@ -467,7 +560,13 @@ class FilteringStage:
             return none_entries
     
     def save_filtered_results(self, flat_entries, patient_id, out_dir, metadata=None, flags=None):
-        """Save flat list of filtered entries with FLAG key to each entry"""
+        """Save flat list of filtered entries to JSON file
+        
+        Note: Entries are saved as-is without sorting. 
+        Sort separately with sort_entries() if needed.
+        
+        Returns: flat_entries (list) - the entries that were saved
+        """
         if not flat_entries:
             # Print series descriptions from filtered metadata if available
             series_descriptions = []
@@ -477,19 +576,17 @@ class FilteringStage:
             desc_str = "\n".join(series_descriptions) if series_descriptions else "No metadata available"
             print(f"⚠️  No DCE files found for patient {patient_id} - manual inspection needed")
             print(f"   Available series:\n {desc_str}")
-            return None
-        
-        # Sort entries before saving
-        sorted_entries = self.sort_entries(flat_entries)
+            return []
         
         os.makedirs(out_dir, exist_ok=True)
         safe_patient_id = str(patient_id).replace('/', '_').replace('\\', '_')
         
         output_file = os.path.join(out_dir, f"{safe_patient_id}_filtered.json")
         with open(output_file, "w") as f:
-            json.dump({patient_id: sorted_entries}, f, indent=2)
+            json.dump({patient_id: flat_entries}, f, indent=2)
         
-        return output_file
+        # Return the entries that were saved
+        return flat_entries
 
 
 class ConsistencyChecker:
