@@ -2,13 +2,19 @@ import pydicom
 import os
 import json
 import csv
+import sys
 from tqdm import tqdm
 import numpy as np
 import re
 
+# Add parent directory to path for nifti_converter import
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from dicom_reader import ExtractionStage
 from dce_filter import FilteringStage
 from consistency_checker import VisualChecks
+from nifti_converter import process_patient_json
+from nifti_validator import validate_patient_nifti
 
 
 class DicomProcessingPipeline:
@@ -214,6 +220,121 @@ class DicomProcessingPipeline:
         print(f"Summary: {ok_count} OK, {flagged_count} FLAGGED out of {len(results)} patients")
         
         return results, summary_stats
+
+    def process_patient_with_nifti_conversion(self, patient_dir, patient_dir_name, extract_out_dir, 
+                                              filter_out_dir, nifti_images_root, nifti_metadata_root):
+        """
+        Process a single patient through the complete pipeline including NIfTI conversion.
+        
+        Args:
+            patient_dir: Path to patient DICOM directory
+            patient_dir_name: Name of patient directory
+            extract_out_dir: Output directory for extracted metadata
+            filter_out_dir: Output directory for filtered results
+            nifti_images_root: Root directory for NIfTI images
+            nifti_metadata_root: Root directory for NIfTI metadata
+            
+        Returns:
+            Dictionary with patient processing and conversion results
+        """
+        result = {
+            "patient_id": None,
+            "status": None,
+            "flags": None,
+            "entry_count": 0,
+            "nifti_conversion": "SKIPPED",
+            "nifti_error": None,
+            "nifti_validation": None,
+            "nifti_validation_status": "NOT_RUN"
+        }
+        
+        try:
+            # STAGE 1: EXTRACTION & FILTERING & CONSISTENCY CHECKS
+            print(f"  [EXTRACTION] Reading DICOM metadata from {patient_dir_name}...", end=" ", flush=True)
+            
+            filtered_data = self.extract_filter_and_save(
+                patient_dir,
+                extract_out_dir,
+                filter_out_dir,
+                save_extracted=True,
+                save_filtered=True
+            )
+            
+            if not filtered_data or filtered_data[0] is None:
+                print(f"FAILED (extraction error)")
+                result["status"] = "EXTRACTION_FAILED"
+                return result
+            
+            print(f"✓")
+            
+            summary, filtered_entries, status, flags, details = filtered_data
+            
+            # Extract patient_id from summary
+            if not summary or not isinstance(summary, dict):
+                print(f"  [ERROR] Invalid summary format")
+                result["status"] = "INVALID_SUMMARY"
+                return result
+            
+            patient_id = list(summary.keys())[0]
+            result["patient_id"] = patient_id
+            result["status"] = status
+            result["flags"] = " | ".join(flags) if flags else "OK"
+            result["entry_count"] = len(filtered_entries)
+            
+            # STAGE 2: CONSISTENCY CHECK RESULT
+            status_icon = "✓" if status == "OK" else "⚠️"
+            print(f"  [CONSISTENCY] {status_icon} {status} - {result['entry_count']} sequences")
+            
+            # STAGE 3: NIFTI CONVERSION
+            if status == "OK":
+                filtered_json_path = os.path.join(filter_out_dir, f"{patient_id}_filtered.json")
+                
+                if os.path.exists(filtered_json_path):
+                    print(f"  [NIfTI CONVERSION] Converting {result['entry_count']} sequences...", end=" ", flush=True)
+                    try:
+                        process_patient_json(
+                            filtered_json_path,
+                            nifti_images_root,
+                            nifti_metadata_root,
+                            interactive=False
+                        )
+                        print(f"✓")
+                        result["nifti_conversion"] = "SUCCESS"
+                        
+                        # STAGE 4: NIFTI VALIDATION
+                        patient_nifti_dir = os.path.join(nifti_images_root, patient_id)
+                        print(f"  [NIfTI VALIDATION] Running quality checks...", end=" ", flush=True)
+                        
+                        validation_result = validate_patient_nifti(
+                            patient_nifti_dir,
+                            patient_id,
+                            filtered_entries
+                        )
+                        print(f"✓ {validation_result['overall_status']}")
+                        
+                        result["nifti_validation"] = validation_result
+                        result["nifti_validation_status"] = validation_result["overall_status"]
+                        
+                    except Exception as e:
+                        print(f"FAILED ({str(e)[:50]})")
+                        result["nifti_conversion"] = "FAILED"
+                        result["nifti_error"] = str(e)
+                else:
+                    print(f"  [NIfTI CONVERSION] JSON file not found")
+                    result["nifti_conversion"] = "JSON_NOT_FOUND"
+            else:
+                # Flagged case, skip conversion
+                print(f"  [NIfTI CONVERSION] SKIPPED (consistency check flagged)")
+                result["nifti_conversion"] = "SKIPPED"
+            
+            return result
+            
+        except Exception as e:
+            print(f"ERROR: {str(e)}")
+            result["status"] = "ERROR"
+            result["nifti_conversion"] = "SKIPPED"
+            return result
+
 
 
 

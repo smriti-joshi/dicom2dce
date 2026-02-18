@@ -35,6 +35,10 @@ class DicomMetadataExtractor:
                 val = ds.get(tag, default)
                 return DicomMetadataExtractor.serialize_dicom_value(val)
             
+            # Get acquisition time (primary) or trigger time in milliseconds (fallback)
+            acq_time = get_value("AcquisitionTime")
+            trigger_time = get_value("TriggerTime")
+            
             return {
                 'DicomPath': dcm_path,
                 "SeriesDescription": get_value("SeriesDescription", "NoDescription"),
@@ -46,9 +50,10 @@ class DicomMetadataExtractor:
                 "EchoTime": get_value("EchoTime"),
                 "FlipAngle": get_value("FlipAngle"),
                 "AcquisitionNumber": get_value("AcquisitionNumber"),
+                "AcquisitionTime": acq_time,
                 "TemporalPositionIdentifier": get_value("TemporalPositionIdentifier"),
                 "FrameReferenceTime": get_value("FrameReferenceTime"),
-                "TriggerTime": get_value("TriggerTime"),
+                "TriggerTime": trigger_time,
                 "NumberOfTemporalPositions": get_value("NumberOfTemporalPositions"),
                 "ContrastBolusAgent": get_value("ContrastBolusAgent"),
                 "ContrastBolusVolume": get_value("ContrastBolusVolume"),
