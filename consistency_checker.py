@@ -7,6 +7,7 @@ import pydicom
 import os
 from collections import defaultdict
 from difflib import SequenceMatcher
+from dce_filter import FilterConfig
 
 
 class VisualChecks:
@@ -179,7 +180,7 @@ class VisualChecks:
         details["folder_names"] = folder_names
         
         # Check folder name similarity across all cases (applies to all entry counts)
-        is_similar, low_similarity_pairs = VisualChecks.check_folder_name_similarity(filtered_entries, similarity_threshold=0.9)
+        is_similar, low_similarity_pairs = VisualChecks.check_folder_name_similarity(filtered_entries, similarity_threshold=FilterConfig.get_folder_name_similarity_threshold())
         if not is_similar:
             flags.append("LOW_FOLDER_NAME_SIMILARITY")
             details["low_similarity_pairs"] = low_similarity_pairs
@@ -205,7 +206,7 @@ class VisualChecks:
                     folder_slice_counts[folder_path] = dcm_count
             
             min_slice_count = min(folder_slice_counts.values()) if folder_slice_counts else 0
-            if min_slice_count > 0 and min_slice_count < 20:
+            if min_slice_count > 0 and min_slice_count < FilterConfig.get_min_slice_count():
                 flags.append(f"LOW_SLICE_COUNT_{min_slice_count}")
             # Check if all folders have equal slice counts
             if folder_slice_counts:
@@ -258,8 +259,8 @@ class VisualChecks:
                 if min_slices > 0 and min_slices < 20:
                     flags.append(f"LOW_SLICE_COUNT_{min_slices}")
                 
-                # Check if less than 2 temporal positions (phases too few)
-                if len(temp_groups) < 2:
+                # Check if less than minimum temporal positions (phases too few)
+                if len(temp_groups) < FilterConfig.get_min_temporal_positions():
                     flags.append("PHASES_TOO_FEW")
                 
                 details["temporal_positions"] = len(temp_groups)

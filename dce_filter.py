@@ -84,6 +84,7 @@ class FilterConfig:
         cls._ensure_loaded()
         return cls._config["consistency_checks"]["folder_name_similarity_threshold"]["value"]
     
+
     # Contrast agent tags
     @classmethod
     def get_contrast_agent_tags(cls):

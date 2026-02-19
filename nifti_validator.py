@@ -3,6 +3,7 @@ import json
 import nibabel as nib
 import numpy as np
 from datetime import datetime
+from dce_filter import FilterConfig
 
 
 def parse_acquisition_time(acq_time, trigger_time=None):
@@ -239,8 +240,9 @@ def check_signal_progression(nifti_files, images_dict, patient_id):
     issues = []
     metrics = {}
     
-    if len(nifti_files) < 3:
-        return "WARNING", ["Less than 3 volumes - cannot assess progression"], {"file_count": len(nifti_files)}
+    min_temporal = FilterConfig.get_min_temporal_positions()
+    if len(nifti_files) < min_temporal:
+        return "WARNING", [f"Less than {min_temporal} volumes - cannot assess progression"], {"file_count": len(nifti_files)}
     
     # Calculate mean intensities from pre-loaded images
     mean_intensities = []
