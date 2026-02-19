@@ -5,45 +5,8 @@ Integrated into the pipeline to flag issues after filtering.
 
 import pydicom
 import os
-import json
 from collections import defaultdict
 from difflib import SequenceMatcher
-
-
-def load_config(config_path=None):
-    """Load configuration from JSON file"""
-    if config_path is None:
-        # Default to config.json in the same directory as this script
-        config_path = os.path.join(os.path.dirname(__file__), "config.json")
-    
-    if not os.path.exists(config_path):
-        raise FileNotFoundError(f"Config file not found: {config_path}")
-    
-    with open(config_path, "r") as f:
-        return json.load(f)
-
-
-class ConfigLoader:
-    """Load and cache configuration"""
-    _config = None
-    
-    @classmethod
-    def get_config(cls):
-        if cls._config is None:
-            cls._config = load_config()
-        return cls._config
-    
-    @classmethod
-    def get_min_slice_count(cls):
-        return cls.get_config()["consistency_checks"]["min_slice_count"]["value"]
-    
-    @classmethod
-    def get_min_temporal_positions(cls):
-        return cls.get_config()["consistency_checks"]["min_temporal_positions"]["value"]
-    
-    @classmethod
-    def get_folder_name_similarity_threshold(cls):
-        return cls.get_config()["consistency_checks"]["folder_name_similarity_threshold"]["value"]
 
 
 class VisualChecks:
@@ -118,11 +81,8 @@ class VisualChecks:
         return SequenceMatcher(None, name1.lower(), name2.lower()).ratio()
     
     @staticmethod
-    def check_folder_name_similarity(filtered_entries, similarity_threshold=None):
+    def check_folder_name_similarity(filtered_entries, similarity_threshold=0.9):
         """Check if all folder names are similar (>= similarity_threshold)"""
-        if similarity_threshold is None:
-            similarity_threshold = ConfigLoader.get_folder_name_similarity_threshold()
-        
         if not filtered_entries or len(filtered_entries) <= 1:
             return True, []
         
@@ -219,7 +179,7 @@ class VisualChecks:
         details["folder_names"] = folder_names
         
         # Check folder name similarity across all cases (applies to all entry counts)
-        is_similar, low_similarity_pairs = VisualChecks.check_folder_name_similarity(filtered_entries, similarity_threshold=ConfigLoader.get_folder_name_similarity_threshold())
+        is_similar, low_similarity_pairs = VisualChecks.check_folder_name_similarity(filtered_entries, similarity_threshold=0.9)
         if not is_similar:
             flags.append("LOW_FOLDER_NAME_SIMILARITY")
             details["low_similarity_pairs"] = low_similarity_pairs
@@ -244,6 +204,9 @@ class VisualChecks:
                         dcm_count += sum(1 for f in files if f.lower().endswith('.dcm'))
                     folder_slice_counts[folder_path] = dcm_count
             
+            min_slice_count = min(folder_slice_counts.values()) if folder_slice_counts else 0
+            if min_slice_count > 0 and min_slice_count < 20:
+                flags.append(f"LOW_SLICE_COUNT_{min_slice_count}")
             # Check if all folders have equal slice counts
             if folder_slice_counts:
                 slice_counts = list(folder_slice_counts.values())
@@ -290,13 +253,13 @@ class VisualChecks:
                     flags.append("UNEQUAL_SLICES_PER_TEMPORAL_POS")
                     details["slices_per_temporal"] = {k: len(temp_groups[k]) for k in sorted(temp_groups.keys())}
                 
-                # Check if slices per temporal position < min_slice_count
+                # Check if slices per temporal position < 20
                 min_slices = min(slice_counts) if slice_counts else 0
-                if min_slices > 0 and min_slices < ConfigLoader.get_min_slice_count():
+                if min_slices > 0 and min_slices < 20:
                     flags.append(f"LOW_SLICE_COUNT_{min_slices}")
                 
-                # Check if less than min_temporal_positions (phases too few)
-                if len(temp_groups) < ConfigLoader.get_min_temporal_positions():
+                # Check if less than 2 temporal positions (phases too few)
+                if len(temp_groups) < 2:
                     flags.append("PHASES_TOO_FEW")
                 
                 details["temporal_positions"] = len(temp_groups)
