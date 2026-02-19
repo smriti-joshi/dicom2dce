@@ -86,16 +86,45 @@ def check_nifti_consistency(nifti_files, images_dict, patient_id):
     
     metrics["file_count"] = len(nifti_files)
     
-    # Check sequential numbering (no gaps)
+    # Check filename format: patient_id_XXXX.nii.gz
+    invalid_filenames = []
     expected_indices = set(range(len(nifti_files)))
     actual_indices = set()
-    for fname in nifti_files:
-        try:
-            idx = int(fname.split('_')[-1].replace('.nii.gz', ''))
-            actual_indices.add(idx)
-        except:
-            issues.append(f"Invalid filename format: {fname}")
     
+    for fname in nifti_files:
+        # Check if filename matches expected pattern
+        expected_pattern = f"{patient_id}_"
+        if not fname.startswith(expected_pattern):
+            invalid_filenames.append(f"{fname} (doesn't start with {expected_pattern})")
+            continue
+        
+        if not fname.endswith('.nii.gz'):
+            invalid_filenames.append(f"{fname} (doesn't end with .nii.gz)")
+            continue
+        
+        try:
+            # Extract index from filename
+            idx_str = fname[len(expected_pattern):-len('.nii.gz')]
+            idx = int(idx_str)
+            
+            # Check if index has correct 4-digit format (e.g., 0000, 0001, etc.)
+            if f"{idx:04d}" != idx_str:
+                invalid_filenames.append(f"{fname} (index not 4-digit zero-padded: got '{idx_str}', expected '{idx:04d}')")
+            
+            actual_indices.add(idx)
+        except ValueError:
+            # Check if there's a suffix (non-numeric characters after index)
+            if any(c.isalpha() or c == '_' for c in idx_str):
+                invalid_filenames.append(f"{fname} (contains suffix/extra characters: '{idx_str}')")
+            else:
+                invalid_filenames.append(f"{fname} (index is not numeric: '{idx_str}')")
+    
+    # Report filename format issues
+    if invalid_filenames:
+        for invalid in invalid_filenames:
+            issues.append(f"Invalid filename format: {invalid}")
+    
+    # Check sequential numbering (no gaps)
     missing_indices = expected_indices - actual_indices
     if missing_indices:
         issues.append(f"Missing indices: {sorted(missing_indices)}")
