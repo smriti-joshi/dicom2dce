@@ -2,19 +2,16 @@ import pydicom
 import os
 import json
 import csv
-import sys
 from tqdm import tqdm
 import numpy as np
 import re
 
-# Add parent directory to path for nifti_converter import
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
-from dicom_reader import ExtractionStage
-from dce_filter import FilteringStage
-from consistency_checker import VisualChecks
-from nifti_converter import process_patient_json
-from nifti_validator import validate_patient_nifti
+from .pipeline.stage1_extractor import ExtractionStage
+from .pipeline.stage2_filter import FilteringStage
+from .pipeline.stage3_dcmconsistency import VisualChecks
+from .pipeline.stage4_niiconvert import process_patient_json
+from .pipeline.stage5_niivalidate import validate_patient_nifti
+from .pipeline.stage6_report import flatten_validation_result, save_patient_csv_row
 
 
 class DicomProcessingPipeline:
@@ -222,9 +219,9 @@ class DicomProcessingPipeline:
         return results, summary_stats
 
     def process_patient_with_nifti_conversion(self, patient_dir, patient_dir_name, extract_out_dir, 
-                                              filter_out_dir, nifti_images_root, nifti_metadata_root):
+                                              filter_out_dir, nifti_images_root, nifti_metadata_root, csv_out_dir=None):
         """
-        Process a single patient through the complete pipeline including NIfTI conversion.
+        Process a single patient through the complete pipeline including NIfTI conversion and CSV saving.
         
         Args:
             patient_dir: Path to patient DICOM directory
@@ -233,6 +230,7 @@ class DicomProcessingPipeline:
             filter_out_dir: Output directory for filtered results
             nifti_images_root: Root directory for NIfTI images
             nifti_metadata_root: Root directory for NIfTI metadata
+            csv_out_dir: (Optional) Directory for per-patient CSV; if provided, result is saved as {patient_id}_results.csv
             
         Returns:
             Dictionary with patient processing and conversion results
@@ -326,6 +324,19 @@ class DicomProcessingPipeline:
                 # Flagged case, skip conversion
                 print(f"  [NIfTI CONVERSION] SKIPPED (consistency check flagged)")
                 result["nifti_conversion"] = "SKIPPED"
+            
+            # STAGE 6: REPORT - Save per-patient CSV if directory provided
+            if csv_out_dir and result["patient_id"]:
+                csv_row = {
+                    "patient_id": result["patient_id"],
+                    "dicom_status": result["status"],
+                    "entry_count": result["entry_count"],
+                    "dicom_flags": result["flags"],
+                    "nifti_conversion": result["nifti_conversion"],
+                    "nifti_overall_status": result["nifti_validation_status"],
+                }
+                csv_row.update(flatten_validation_result(result["nifti_validation"]))
+                save_patient_csv_row(csv_row, csv_out_dir, result["patient_id"])
             
             return result
             

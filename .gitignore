@@ -4,3 +4,6 @@ CONFIG_GUIDE.md
 .gitignore
 CONFIGURATION_SUMMARY.md
 README_CONFIG.md
+.pyc/*
+pipeline/__pycache__/
+pyproject.toml

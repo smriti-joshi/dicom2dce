@@ -3,7 +3,7 @@ import json
 import nibabel as nib
 import numpy as np
 from datetime import datetime
-from dce_filter import FilterConfig
+from .stage2_filter import Config
 
 
 def parse_acquisition_time(acq_time, trigger_time=None):
@@ -240,7 +240,7 @@ def check_signal_progression(nifti_files, images_dict, patient_id):
     issues = []
     metrics = {}
     
-    min_temporal = FilterConfig.get_min_temporal_positions()
+    min_temporal = Config.get_min_temporal_positions()
     if len(nifti_files) < min_temporal:
         return "WARNING", [f"Less than {min_temporal} volumes - cannot assess progression"], {"file_count": len(nifti_files)}
     
@@ -369,7 +369,6 @@ def validate_patient_nifti(patient_images_dir, patient_id, filtered_entries):
         "consistency": {},
         "temporal_order": {},
         "signal_progression": {},
-        "volume_integrity": {},
         "overall_status": "OK",
         "all_issues": []
     }
@@ -395,12 +394,6 @@ def validate_patient_nifti(patient_images_dir, patient_id, filtered_entries):
     result["signal_progression"]["issues"] = sig_issues
     result["signal_progression"]["metrics"] = sig_metrics
     result["all_issues"].extend(sig_issues)
-    
-    # vol_status, vol_issues, vol_metrics = check_volume_integrity(nifti_files, images_dict, patient_id)
-    # result["volume_integrity"]["status"] = vol_status
-    # result["volume_integrity"]["issues"] = vol_issues
-    # result["volume_integrity"]["metrics"] = vol_metrics
-    # result["all_issues"].extend(vol_issues)
     
     # Determine overall status
     statuses = [cons_status, temp_status, sig_status]  # vol_status is commented out

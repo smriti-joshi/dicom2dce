@@ -101,5 +101,19 @@
       "enabled": true,
       "description": "Enable natural sorting (e.g., '2' before '10') for file ordering"
     }
+  },
+  "paths": {
+    "centers": {
+      "values": ["HCB"],
+      "description": "List of centers to process"
+    },
+    "dicom_root": {
+      "value": "/dataall/dicoms",
+      "description": "Root directory containing per-center DICOM input folders"
+    },
+    "results_dir": {
+      "value": "/dataall/eucanimage_second_try",
+      "description": "Root directory for NIfTI output; images and metadata are written under <nifti_root>/<center>/"
+    }
   }
 }
