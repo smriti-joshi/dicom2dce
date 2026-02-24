@@ -9,6 +9,10 @@ if __name__ == "__main__":
     centers = Config.get_centers()
     pipeline = DicomProcessingPipeline()
 
+    SKIP_PATIENT_IDS = [
+            "_".join(x.split("_")[:3])
+            for x in os.listdir("/dataall/breast_masks/first_phase_eucanimage")
+        ]
     for center in centers:
         print(f"\n{'='*70}")
         print(f"  CENTER: {center}")
@@ -40,10 +44,15 @@ if __name__ == "__main__":
         nifti_stats = {"success": 0, "failed": 0, "skipped": 0}
         validation_stats = {"ok": 0, "warning": 0, "error": 0}
 
+
         # loop through patients
         for idx, patient_dir_name in enumerate(patient_dirs, 1):
             patient_dir = os.path.join(center_root_dir, patient_dir_name)
+
             print(f"\n[{idx}/{len(patient_dirs)}]")
+            
+            if patient_dir in SKIP_PATIENT_IDS:
+                print(f"{patient_dir} has been processed in previous iterations by Dimitri/Lidia")
 
             result = pipeline.process_patient_with_nifti_conversion(
                 patient_dir, patient_dir_name,

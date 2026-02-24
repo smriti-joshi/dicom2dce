@@ -1,0 +1,16 @@
+# dicom2dce Pipeline Configuration - Paths
+# 
+# Edit this file to configure the input and output directories for your data.
+
+paths:
+  # List of medical centers to process
+  centers:
+    - UMEA
+  
+  # Root directory containing per-center DICOM input folders
+  # Expected structure: <dicom_root>/<center_name>/<patient_id>/...
+  dicom_root: /dataall/dicoms
+  
+  # Root directory for NIfTI output
+  # Output structure: <results_dir>/<center>/dce/images/ and <center>/dce/dicom_metadata/
+  results_dir: /dataall/eucanimage_second_try

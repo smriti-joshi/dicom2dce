@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dicom2dce"
+version = "0.1.0"
+description = "DICOM extraction, DCE filtering, and NIfTI conversion pipeline"
+requires-python = ">=3.9"
+dependencies = [
+    "pydicom",
+    "nibabel",
+    "numpy",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = [".."]
+include = ["dicom2dce*"]
+
+[tool.setuptools.package-data]
+dicom2dce = ["config.json"]

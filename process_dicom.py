@@ -336,6 +336,18 @@ class DicomProcessingPipeline:
                     "nifti_overall_status": result["nifti_validation_status"],
                 }
                 csv_row.update(flatten_validation_result(result["nifti_validation"]))
+                
+                # Add consistency check details from the filtered_data
+                if 'details' in locals():
+                    csv_row.update({
+                        "consistency_temporal_positions": details.get("temporal_positions", ""),
+                        "consistency_total_dicoms": details.get("total_dicoms", ""),
+                        "consistency_folder_names": json.dumps(details.get("folder_names", [])) if details.get("folder_names") else "",
+                        "consistency_slices_per_temporal": json.dumps(details.get("slices_per_temporal", {})) if details.get("slices_per_temporal") else "",
+                        "consistency_folder_slice_counts": json.dumps(details.get("folder_slice_counts", {})) if details.get("folder_slice_counts") else "",
+                        "consistency_low_similarity_pairs": json.dumps(details.get("low_similarity_pairs", [])) if details.get("low_similarity_pairs") else "",
+                    })
+                
                 save_patient_csv_row(csv_row, csv_out_dir, result["patient_id"])
             
             return result

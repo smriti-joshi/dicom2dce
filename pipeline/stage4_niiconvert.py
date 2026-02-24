@@ -2,6 +2,7 @@ import os
 import json
 import subprocess
 import glob
+import re
 import nibabel as nib
 
 
@@ -25,17 +26,42 @@ def convert_dicom_to_nifti(dicom_folder, output_path, out_name=None):
 
 
 def split_4d_nifti_overwrite(nifti_path, patient_images_dir, patient_id, seq_idx):
-    """Split 4D NIfTI file into multiple 3D volumes and remove the 4D file."""
+    """Split 4D NIfTI file into multiple 3D volumes and remove the 4D file.
+    
+    Also duplicates associated JSON sidecar for each volume.
+    """
     img = nib.load(nifti_path)
     data = img.get_fdata()
     if data.ndim == 4:
         n_vols = data.shape[3]
+        nifti_basename = os.path.basename(nifti_path).replace('.nii.gz', '')
+        json_path = os.path.join(patient_images_dir, f"{nifti_basename}.json")
+        
+        # Read original JSON if it exists
+        json_data = None
+        if os.path.exists(json_path):
+            with open(json_path, "r") as f:
+                json_data = json.load(f)
+        
+        # Split NII volumes and duplicate JSON for each
         for i in range(n_vols):
             out_name = f"{patient_id}_{seq_idx+i:04d}.nii.gz"
             out_path = os.path.join(patient_images_dir, out_name)
             vol_img = nib.Nifti1Image(data[..., i], img.affine, img.header)
             nib.save(vol_img, out_path)
+            
+            # Duplicate JSON for each volume with matching index
+            if json_data is not None:
+                json_out_name = f"{patient_id}_{seq_idx+i:04d}.json"
+                json_out_path = os.path.join(patient_images_dir, json_out_name)
+                with open(json_out_path, "w") as f:
+                    json.dump(json_data, f, indent=2)
+        
+        # Remove original 4D NII and JSON
         os.remove(nifti_path)
+        if os.path.exists(json_path):
+            os.remove(json_path)
+        
         return n_vols
     return 0
 
@@ -58,29 +84,22 @@ def _process_single_sequence(
     convert_dicom_to_nifti(dicom_folder, patient_images_dir, out_name=out_basename)
     final_nii_path = os.path.join(patient_images_dir, f"{out_basename}.nii.gz")
 
-    # If exact filename not found, look for files with suffix (e.g., trigger time)
+    # Check if the pre-contrast baseline file was created
     if not os.path.exists(final_nii_path):
-        pattern = os.path.join(patient_images_dir, f"{out_basename}_t*.nii.gz")
-        matching_files = glob.glob(pattern)
-        if matching_files:
-            # dcm2niix added a suffix, rename it to expected format
-            suffixed_file = matching_files[0]
-            os.rename(suffixed_file, final_nii_path)
-            print(f"Renamed {os.path.basename(suffixed_file)} to {os.path.basename(final_nii_path)}")
-        else:
-            return seq_idx
+        return seq_idx
 
-    # Check if the converted file is actually 4D
+    # Check if the baseline file is 4D or 3D
     img = nib.load(final_nii_path)
     is_4d = img.get_fdata().ndim == 4
     
+    baseline_volumes = 0
     if is_4d:
-        # dcm2niix created a 4D file, need to split it
-        n_vols = split_4d_nifti_overwrite(
+        # dcm2niix created a 4D baseline file, need to split it
+        baseline_volumes = split_4d_nifti_overwrite(
             final_nii_path, patient_images_dir, patient_id, seq_idx
         )
-        if n_vols > 0:
-            for i in range(n_vols):
+        if baseline_volumes > 0:
+            for i in range(baseline_volumes):
                 mapping.append(
                     {
                         "nifti_image": os.path.join(
@@ -90,7 +109,7 @@ def _process_single_sequence(
                         "dicom_folder": dicom_folder,
                     }
                 )
-            seq_idx += n_vols
+            seq_idx += baseline_volumes
         else:
             # Fallback: add 4D file as-is
             mapping.append(
@@ -101,7 +120,7 @@ def _process_single_sequence(
             )
             seq_idx += 1
     else:
-        # dcm2niix created a 3D file (or already split volumes)
+        # Baseline is a 3D file
         mapping.append(
             {
                 "nifti_image": final_nii_path,
@@ -109,13 +128,58 @@ def _process_single_sequence(
             }
         )
         seq_idx += 1
+    
+    # Handle trigger time files if they exist
+    # dcm2niix may save trigger times as {out_basename}_t1.nii.gz, _t2.nii.gz, etc.
+    trigger_pattern = os.path.join(patient_images_dir, f"{out_basename}_t*.nii.gz")
+    trigger_files = glob.glob(trigger_pattern)
+    
+    if trigger_files:
+        # Extract trigger time numbers and sort by them
+        trigger_files_with_time = []
+        for f in trigger_files:
+            basename = os.path.basename(f).replace('.nii.gz', '')
+            # Extract number after _t
+            match = re.search(r'_t(\d+)$', basename)
+            if match:
+                trigger_time = int(match.group(1))
+                trigger_files_with_time.append((trigger_time, f))
+        
+        # Sort by trigger time to maintain proper order
+        trigger_files_with_time.sort()
+        
+        print(f"  Found {len(trigger_files_with_time)} trigger time file(s)")
+        
+        # Rename in order starting from current seq_idx (after baseline volumes)
+        for i, (trigger_time, old_path) in enumerate(trigger_files_with_time):
+            new_seq_idx = seq_idx + i
+            new_name = f"{patient_id}_{new_seq_idx:04d}.nii.gz"
+            new_path = os.path.join(patient_images_dir, new_name)
+            os.rename(old_path, new_path)
+            
+            # Also rename JSON sidecar if it exists
+            old_json = old_path.replace('.nii.gz', '.json')
+            if os.path.exists(old_json):
+                new_json = new_path.replace('.nii.gz', '.json')
+                os.rename(old_json, new_json)
+            
+            # Add to mapping
+            mapping.append(
+                {
+                    "nifti_image": new_path,
+                    "dicom_folder": dicom_folder,
+                }
+            )
+            print(f"    Renamed {os.path.basename(old_path)} -> {new_name}")
+        
+        seq_idx += len(trigger_files_with_time)
 
-    # Move all JSON sidecars for this sequence to the metadata directory
-    for fname in os.listdir(patient_images_dir):
-        if fname.startswith(out_basename) and fname.endswith('.json'):
-            src_json = os.path.join(patient_images_dir, fname)
-            dst_json = os.path.join(patient_metadata_dir, fname)
-            os.rename(src_json, dst_json)
+    # Move all JSON sidecars to the metadata directory
+    # All JSON files should now have proper indices matching their NII files
+    json_pattern = os.path.join(patient_images_dir, f"{patient_id}_*.json")
+    for json_file in glob.glob(json_pattern):
+        dst_json = os.path.join(patient_metadata_dir, os.path.basename(json_file))
+        os.rename(json_file, dst_json)
 
     return seq_idx
 

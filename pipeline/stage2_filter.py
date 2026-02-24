@@ -1,23 +1,40 @@
 import pydicom
 import os
 import json
+import yaml
 from tqdm import tqdm
 import numpy as np
 import re
 from difflib import SequenceMatcher
 
 
-def load_config(config_path=None):
-    """Load configuration from JSON file"""
-    if config_path is None:
-        # Default to config.json in the parent directory
-        config_path = os.path.join(os.path.dirname(__file__), "..", "config.json")
+def load_config(config_dir=None):
+    """Load configuration from both JSON (parameters) and YAML (paths) files"""
+    if config_dir is None:
+        # Default to the dicom2dce directory containing config files
+        config_dir = os.path.join(os.path.dirname(__file__), "..")
     
-    if not os.path.exists(config_path):
-        raise FileNotFoundError(f"Config file not found: {config_path}")
+    # Load parameters from config_params.json
+    params_path = os.path.join(config_dir, "config_params.json")
+    if not os.path.exists(params_path):
+        raise FileNotFoundError(f"Config file not found: {params_path}")
     
-    with open(config_path, "r") as f:
-        return json.load(f)
+    with open(params_path, "r") as f:
+        config = json.load(f)
+    
+    # Load paths from config_paths.yaml
+    paths_path = os.path.join(config_dir, "config_paths.yaml")
+    if not os.path.exists(paths_path):
+        raise FileNotFoundError(f"Config file not found: {paths_path}")
+    
+    with open(paths_path, "r") as f:
+        paths_config = yaml.safe_load(f)
+    
+    # Merge paths into config
+    if paths_config and "paths" in paths_config:
+        config["paths"] = paths_config["paths"]
+    
+    return config
 
 
 def natural_sort_key(s):
@@ -34,9 +51,9 @@ class Config:
     _config = None
     
     @classmethod
-    def load(cls, config_path=None):
-        """Load configuration from file"""
-        cls._config = load_config(config_path)
+    def load(cls, config_dir=None):
+        """Load configuration from files (config_params.json and config_paths.yaml)"""
+        cls._config = load_config(config_dir)
     
     @classmethod
     def _ensure_loaded(cls):
@@ -129,22 +146,32 @@ class Config:
     @classmethod
     def get_centers(cls):
         cls._ensure_loaded()
-        return cls._config["paths"]["centers"]["values"]
+        paths = cls._config.get("paths", {})
+        centers = paths.get("centers", [])
+        # Handle both old format (with "values" key) and new format (direct list)
+        if isinstance(centers, dict) and "values" in centers:
+            return centers["values"]
+        return centers
 
     @classmethod
     def get_dicom_root(cls):
         cls._ensure_loaded()
-        return cls._config["paths"]["dicom_root"]["value"]
+        paths = cls._config.get("paths", {})
+        dicom_root = paths.get("dicom_root", "")
+        # Handle both old format (with "value" key) and new format (direct value)
+        if isinstance(dicom_root, dict) and "value" in dicom_root:
+            return dicom_root["value"]
+        return dicom_root
 
     @classmethod
     def get_results_dir(cls):
         cls._ensure_loaded()
-        return cls._config["paths"]["results_dir"]["value"]
-
-    @classmethod
-    def get_nifti_root(cls):
-        cls._ensure_loaded()
-        return cls._config["paths"]["nifti_root"]["value"]
+        paths = cls._config.get("paths", {})
+        results_dir = paths.get("results_dir", "")
+        # Handle both old format (with "value" key) and new format (direct value)
+        if isinstance(results_dir, dict) and "value" in results_dir:
+            return results_dir["value"]
+        return results_dir
 
 
 class FilteringStage:

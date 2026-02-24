@@ -67,6 +67,13 @@ CSV_FIELDNAMES = [
     "dicom_status",
     "entry_count",
     "dicom_flags",
+    # Consistency check details
+    "consistency_temporal_positions",
+    "consistency_total_dicoms",
+    "consistency_folder_names",
+    "consistency_slices_per_temporal",
+    "consistency_folder_slice_counts",
+    "consistency_low_similarity_pairs",
     # NIfTI conversion
     "nifti_conversion",
     # NIfTI validation - overall
