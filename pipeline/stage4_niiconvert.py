@@ -1,6 +1,7 @@
 import os
 import json
 import subprocess
+import glob
 import nibabel as nib
 
 
@@ -57,8 +58,17 @@ def _process_single_sequence(
     convert_dicom_to_nifti(dicom_folder, patient_images_dir, out_name=out_basename)
     final_nii_path = os.path.join(patient_images_dir, f"{out_basename}.nii.gz")
 
+    # If exact filename not found, look for files with suffix (e.g., trigger time)
     if not os.path.exists(final_nii_path):
-        return seq_idx
+        pattern = os.path.join(patient_images_dir, f"{out_basename}_t*.nii.gz")
+        matching_files = glob.glob(pattern)
+        if matching_files:
+            # dcm2niix added a suffix, rename it to expected format
+            suffixed_file = matching_files[0]
+            os.rename(suffixed_file, final_nii_path)
+            print(f"Renamed {os.path.basename(suffixed_file)} to {os.path.basename(final_nii_path)}")
+        else:
+            return seq_idx
 
     # Check if the converted file is actually 4D
     img = nib.load(final_nii_path)
