@@ -162,11 +162,7 @@ class VisualChecks:
         }
         
         # Handle None or empty entries
-        if filtered_entries is None or not isinstance(filtered_entries, list):
-            blocking_flags.append("NO_FILTERED_ENTRIES")
-            return "FLAGGED", blocking_flags, details
-        
-        if len(filtered_entries) == 0:
+        if filtered_entries is None or not isinstance(filtered_entries, list) or len(filtered_entries) == 0:
             blocking_flags.append("EMPTY_FILTERED_ENTRIES")
             return "FLAGGED", blocking_flags, details
         

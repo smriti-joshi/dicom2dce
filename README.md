@@ -97,6 +97,47 @@ This processes all configured centers and patients, generating:
 - `config_params.json` - Processing parameters (filtering, validation thresholds)
 - `main.py` - CLI entry point
 
+## � Processing Flags Reference
+
+Flags are generated during DICOM consistency checks and NIfTI validation. They're categorized as either **blocking** (prevents processing) or **warnings** (allows processing but noted for review).
+
+### DICOM Consistency Check Flags
+
+#### 🛑 Blocking Flags (Prevent Processing)
+
+| Flag | Meaning | Reason |
+|------|---------|--------|
+| `EMPTY_FILTERED_ENTRIES` | No valid DCE sequences found after filtering | Patient has no DCE-MRI data or all sequences filtered out |
+| `LOW_SLICE_COUNT_{N}` | Fewer than minimum slices per temporal position | N < 20 slices per phase (too coarse resolution) |
+| `PHASES_TOO_FEW` | Insufficient dynamic phases acquired | Less than configured minimum temporal positions |
+| `UNEQUAL_SLICES_PER_TEMPORAL_POS` | Different number of slices across temporal phases | Imaging protocol inconsistency |
+| `UNEQUAL_SLICES_ACROSS_FOLDERS` | Different slice counts across DICOM folders | Data from different protocols/acquired at different times |
+| `UNEXPECTED_ONLY_TWO_SEQUENCES` | Exactly 2 filtered sequences found | Ambiguous whether sequences form a proper DCE series |
+
+#### ⚠️ Warning Flags (Processing Continues)
+
+| Flag | Meaning | Action |
+|------|---------|--------|
+| `MISSING_TEMPORAL_ID_{N}_SLICES` | N slices lack temporal position markers in DICOM | Data still processed; temporal order assumed from file order |
+| `LOW_FOLDER_NAME_SIMILARITY` | DICOM folder names dissimilar (< 90% match) | May indicate accidental mixing of sequences; review recommended |
+
+### NIfTI Validation Issues
+
+These appear in validation reports after conversion. They're informational and don't block processing.
+
+| Issue | Meaning |
+|-------|---------|
+| `Invalid filename format` | NIfTI file doesn't match expected naming pattern |
+| `Missing indices` | Sequential file numbering has gaps |
+| `Failed to load file(s)` | NIfTI file corrupted or unreadable |
+| `Shape mismatches` | Different voxel dimensions across volumes |
+| `Orientation mismatches` | Inconsistent spatial orientation across volumes |
+| `Missing AcquisitionTime` | Metadata missing for temporal ordering |
+| `Acquisition times NOT monotonically increasing` | Temporal ordering is non-sequential |
+| `First volume NOT baseline` | First image has wrong intensity (should be pre-contrast) |
+| `Minimal contrast enhancement` | Very low signal enhancement ratio (< 1.1x) |
+| `Weak contrast enhancement` | Low signal enhancement ratio (1.1x - 1.2x) |
+
 ## 📤 Output
 
 Results are organized by center with intermediate and final outputs:
@@ -108,6 +149,12 @@ results/
 │   │   └── dicom_metadata/
 │   └── intermediate_results/
 ```
+
+### Output Files
+
+- **`*_nifti_dicom_mapping.json`** - Maps each NIfTI file to its source DICOM folder
+- **`per_patient_validation_csvs/`** - Individual validation reports per patient
+- **`consistency_check_results_{center}.csv`** - Summary of all consistency checks
 
 ## License
 
