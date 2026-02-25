@@ -247,6 +247,20 @@ class DicomProcessingPipeline:
         }
         
         try:
+            # Extract patient_id from directory name (assuming format like PREFIX_PREFIX_ID or similar)
+            # We need to check early if patient is already processed
+            patient_id = patient_dir_name
+            
+            # Check if patient NIfTI folder already exists (already processed)
+            patient_nifti_dir = os.path.join(nifti_images_root, patient_id)
+            if os.path.exists(patient_nifti_dir):
+                print(f"  [SKIPPED] Patient {patient_id} already processed")
+                result["patient_id"] = patient_id
+                result["status"] = "ALREADY_PROCESSED"
+                result["nifti_conversion"] = "ALREADY_PROCESSED"
+                result["nifti_validation_status"] = "NOT_RUN"
+                return result
+            
             # STAGE 1: EXTRACTION & FILTERING & CONSISTENCY CHECKS
             print(f"  [EXTRACTION] Reading DICOM metadata from {patient_dir_name}...", end=" ", flush=True)
             

@@ -76,7 +76,7 @@ def _process_single_sequence(
 ):
     """Convert one DICOM sequence to NIfTI, update mapping and seq_idx.
 
-    Automatically detects if dcm2niix created 4D files and splits them if needed.
+    Handles 4D baseline splitting. Trigger time files are handled at patient level.
     Returns the updated seq_idx.
     """
 
@@ -92,7 +92,6 @@ def _process_single_sequence(
     img = nib.load(final_nii_path)
     is_4d = img.get_fdata().ndim == 4
     
-    baseline_volumes = 0
     if is_4d:
         # dcm2niix created a 4D baseline file, need to split it
         baseline_volumes = split_4d_nifti_overwrite(
@@ -128,60 +127,99 @@ def _process_single_sequence(
             }
         )
         seq_idx += 1
-    
-    # Handle trigger time files if they exist
-    # dcm2niix may save trigger times as {out_basename}_t1.nii.gz, _t2.nii.gz, etc.
-    trigger_pattern = os.path.join(patient_images_dir, f"{out_basename}_t*.nii.gz")
-    trigger_files = glob.glob(trigger_pattern)
-    
-    if trigger_files:
-        # Extract trigger time numbers and sort by them
-        trigger_files_with_time = []
-        for f in trigger_files:
-            basename = os.path.basename(f).replace('.nii.gz', '')
-            # Extract number after _t
-            match = re.search(r'_t(\d+)$', basename)
-            if match:
-                trigger_time = int(match.group(1))
-                trigger_files_with_time.append((trigger_time, f))
-        
-        # Sort by trigger time to maintain proper order
-        trigger_files_with_time.sort()
-        
-        print(f"  Found {len(trigger_files_with_time)} trigger time file(s)")
-        
-        # Rename in order starting from current seq_idx (after baseline volumes)
-        for i, (trigger_time, old_path) in enumerate(trigger_files_with_time):
-            new_seq_idx = seq_idx + i
-            new_name = f"{patient_id}_{new_seq_idx:04d}.nii.gz"
-            new_path = os.path.join(patient_images_dir, new_name)
-            os.rename(old_path, new_path)
-            
-            # Also rename JSON sidecar if it exists
-            old_json = old_path.replace('.nii.gz', '.json')
-            if os.path.exists(old_json):
-                new_json = new_path.replace('.nii.gz', '.json')
-                os.rename(old_json, new_json)
-            
-            # Add to mapping
-            mapping.append(
-                {
-                    "nifti_image": new_path,
-                    "dicom_folder": dicom_folder,
-                }
-            )
-            print(f"    Renamed {os.path.basename(old_path)} -> {new_name}")
-        
-        seq_idx += len(trigger_files_with_time)
-
-    # Move all JSON sidecars to the metadata directory
-    # All JSON files should now have proper indices matching their NII files
-    json_pattern = os.path.join(patient_images_dir, f"{patient_id}_*.json")
-    for json_file in glob.glob(json_pattern):
-        dst_json = os.path.join(patient_metadata_dir, os.path.basename(json_file))
-        os.rename(json_file, dst_json)
 
     return seq_idx
+
+
+def _handle_trigger_times_at_patient_level(patient_id, patient_images_dir, seq_idx_to_dicom_folder, all_dicom_folders=None):
+    """Handle trigger time files at patient level after all conversions.
+    
+    Scans for any _t*.nii.gz files and renames them sequentially starting from
+    the next available index after existing files.
+    
+    Args:
+        patient_id: Patient identifier
+        patient_images_dir: Directory containing patient NIfTI images
+        seq_idx_to_dicom_folder: Dictionary mapping original seq_idx to dicom_folder
+        all_dicom_folders: List of all dicom folders involved in processing (fallback if index not found)
+    """
+    # Find all existing image files
+    existing_files = glob.glob(os.path.join(patient_images_dir, f"{patient_id}_*.nii.gz"))
+    existing_indices = []
+    
+    for f in existing_files:
+        basename = os.path.basename(f).replace('.nii.gz', '')
+        match = re.search(r'_(\d+)$', basename)
+        if match:
+            index = int(match.group(1))
+            existing_indices.append(index)
+    
+    if not existing_indices:
+        next_idx = 0
+    else:
+        next_idx = max(existing_indices) + 1
+    
+    # Find all trigger time files
+    trigger_pattern = os.path.join(patient_images_dir, f"{patient_id}_????_t*.nii.gz")
+    trigger_files = glob.glob(trigger_pattern)
+    
+    if not trigger_files:
+        return []  # No trigger time files to process
+    
+    # Extract trigger time numbers and sort by them
+    trigger_files_with_time = []
+    for f in trigger_files:
+        basename = os.path.basename(f).replace('.nii.gz', '')
+        # Extract the original seq_idx (the 4-digit number before _t)
+        match = re.search(r'_(\d{4})_t(\d+)$', basename)
+        if match:
+            original_seq_idx = int(match.group(1))
+            trigger_time = int(match.group(2))
+            trigger_files_with_time.append((trigger_time, original_seq_idx, f))
+    
+    if not trigger_files_with_time:
+        return []
+    
+    # Sort by trigger time to maintain proper order
+    trigger_files_with_time.sort()
+    
+    print(f"  Processing {len(trigger_files_with_time)} trigger time file(s) starting at index {next_idx}")
+    
+    # Determine fallback dicom_folder for trigger times not in mapping
+    # If all conversions came from one folder, use that; otherwise use first available
+    fallback_folder = "N/A"
+    if all_dicom_folders:
+        if len(all_dicom_folders) == 1:
+            fallback_folder = all_dicom_folders[0]
+        elif len(all_dicom_folders) > 0:
+            fallback_folder = all_dicom_folders[0]  # Use first if multiple
+    
+    # Rename in order starting from next_idx and build mapping
+    mapping = []
+    for i, (trigger_time, original_seq_idx, old_path) in enumerate(trigger_files_with_time):
+        new_seq_idx = next_idx + i
+        new_name = f"{patient_id}_{new_seq_idx:04d}.nii.gz"
+        new_path = os.path.join(patient_images_dir, new_name)
+        os.rename(old_path, new_path)
+        
+        # Also rename JSON sidecar if it exists
+        old_json = old_path.replace('.nii.gz', '.json')
+        if os.path.exists(old_json):
+            new_json = new_path.replace('.nii.gz', '.json')
+            os.rename(old_json, new_json)
+        
+        # Get dicom_folder from the original seq_idx mapping, or use fallback
+        dicom_folder = seq_idx_to_dicom_folder.get(original_seq_idx, fallback_folder)
+        
+        mapping.append({
+            "nifti_image": new_path,
+            "dicom_folder": dicom_folder,
+        })
+        
+        print(f"    {os.path.basename(old_path)} -> {new_name}")
+    
+    return mapping
+
 
 
 
@@ -216,12 +254,21 @@ def process_patient_json(json_path, images_root, metadata_root, interactive=Fals
 
     mapping = []
     seq_idx = 0
+    seq_idx_to_dicom_folder = {}  # Track which dicom_folder each seq_idx came from
+    all_dicom_folders = []  # Track all unique dicom folders processed
     
     print("\n"*3 + "*"*50 + "dicom2niix logs" + "*"*50)
     # Process all entries (flat list format)
     for entry in entries:
         dicom_file = entry["DicomPath"]
         dicom_folder = os.path.dirname(dicom_file)
+        
+        # Track all unique dicom_folders
+        if dicom_folder not in all_dicom_folders:
+            all_dicom_folders.append(dicom_folder)
+        
+        # Track the dicom_folder for this seq_idx before processing
+        seq_idx_before = seq_idx
         
         # Process the sequence (4D detection is automatic)
         seq_idx = _process_single_sequence(
@@ -232,6 +279,49 @@ def process_patient_json(json_path, images_root, metadata_root, interactive=Fals
             patient_metadata_dir,
             mapping,
         )
+        
+        # Store mapping for all indices created by this sequence
+        for i in range(seq_idx_before, seq_idx):
+            seq_idx_to_dicom_folder[i] = dicom_folder
+    
+    # Handle any trigger time files at patient level
+    print("\n" + "*"*50 + "Processing trigger times" + "*"*50)
+    trigger_mapping = _handle_trigger_times_at_patient_level(patient_id, patient_images_dir, seq_idx_to_dicom_folder, all_dicom_folders)
+    
+    # Move all JSON sidecars to the metadata directory
+    # All JSON files should now have proper indices matching their NII files
+    json_pattern = os.path.join(patient_images_dir, f"{patient_id}_*.json")
+    for json_file in glob.glob(json_pattern):
+        dst_json = os.path.join(patient_metadata_dir, os.path.basename(json_file))
+        os.rename(json_file, dst_json)
+    
+    # Re-read the mapping to include any renamed trigger time files
+    # For now, we'll just rebuild it from the converted files
+    mapping = []
+    converted_niis = sorted(glob.glob(os.path.join(patient_images_dir, f"{patient_id}_*.nii.gz")))
+    for nii_file in converted_niis:
+        # Check if this file is in the trigger_mapping (renamed trigger times)
+        found_in_trigger = False
+        for trigger_entry in trigger_mapping:
+            if trigger_entry["nifti_image"] == nii_file:
+                mapping.append(trigger_entry)
+                found_in_trigger = True
+                break
+        
+        # If not in trigger mapping, use the dicom_folder from seq_idx_to_dicom_folder
+        if not found_in_trigger:
+            basename = os.path.basename(nii_file).replace('.nii.gz', '')
+            match = re.search(r'_(\d+)$', basename)
+            if match:
+                seq_idx = int(match.group(1))
+                dicom_folder = seq_idx_to_dicom_folder.get(seq_idx, "N/A")
+            else:
+                dicom_folder = "N/A"
+            
+            mapping.append({
+                "nifti_image": nii_file,
+                "dicom_folder": dicom_folder,
+            })
     
     # Save mapping
     mapping_path = os.path.join(patient_metadata_dir, f"{patient_id}_nifti_dicom_mapping.json")
