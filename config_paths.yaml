@@ -6,6 +6,7 @@ paths:
   # List of medical centers to process
   centers:
     - UMEA
+    - KAUNO
   
   # Root directory containing per-center DICOM input folders
   # Expected structure: <dicom_root>/<center_name>/<patient_id>/...
@@ -13,4 +14,4 @@ paths:
   
   # Root directory for NIfTI output
   # Output structure: <results_dir>/<center>/dce/images/ and <center>/dce/dicom_metadata/
-  results_dir: /dataall/eucanimage_second_try
+  results_dir: /dataall/eucanimage_updated

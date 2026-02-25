@@ -149,8 +149,12 @@ class VisualChecks:
             - status: 'OK' or 'FLAGGED'
             - flags_list: List of flag strings
             - details_dict: Additional details for logging
+            
+        Note: Some flags are warnings that don't block processing (like MISSING_TEMPORAL_ID_).
+              Only blocking flags will result in status='FLAGGED'.
         """
         flags = []
+        blocking_flags = []  # Flags that prevent processing
         details = {
             "patient_id": patient_id,
             "entry_count": 0,
@@ -159,12 +163,12 @@ class VisualChecks:
         
         # Handle None or empty entries
         if filtered_entries is None or not isinstance(filtered_entries, list):
-            flags.append("NO_FILTERED_ENTRIES")
-            return "FLAGGED", flags, details
+            blocking_flags.append("NO_FILTERED_ENTRIES")
+            return "FLAGGED", blocking_flags, details
         
         if len(filtered_entries) == 0:
-            flags.append("EMPTY_FILTERED_ENTRIES")
-            return "FLAGGED", flags, details
+            blocking_flags.append("EMPTY_FILTERED_ENTRIES")
+            return "FLAGGED", blocking_flags, details
         
         # Update details with entry count
         details["entry_count"] = len(filtered_entries)
@@ -185,8 +189,8 @@ class VisualChecks:
             flags.append("LOW_FOLDER_NAME_SIMILARITY")
             details["low_similarity_pairs"] = low_similarity_pairs
         
-        # Case 1: More than 3 entries
-        if len(filtered_entries) > 3:
+        # Case 1: More than 2 entries
+        if len(filtered_entries) > 2:
             # Check if slices per DICOM folder are equal
             # Just count .dcm files, don't load metadata
             folder_slice_counts = {}
@@ -207,12 +211,12 @@ class VisualChecks:
             
             min_slice_count = min(folder_slice_counts.values()) if folder_slice_counts else 0
             if min_slice_count > 0 and min_slice_count < Config.get_min_slice_count():
-                flags.append(f"LOW_SLICE_COUNT_{min_slice_count}")
+                blocking_flags.append(f"LOW_SLICE_COUNT_{min_slice_count}")
             # Check if all folders have equal slice counts
             if folder_slice_counts:
                 slice_counts = list(folder_slice_counts.values())
                 if len(set(slice_counts)) > 1:
-                    flags.append("UNEQUAL_SLICES_ACROSS_FOLDERS")
+                    blocking_flags.append("UNEQUAL_SLICES_ACROSS_FOLDERS")
                     details["folder_slice_counts"] = folder_slice_counts
         
         # Case 2: Exactly 1 entry
@@ -244,38 +248,37 @@ class VisualChecks:
                     else:
                         temp_groups[temp_id].append(metadata)
                 
-                # Flag if TemporalPositionIdentifier is missing
+                # Flag if TemporalPositionIdentifier is missing (WARNING - not blocking)
                 if missing_temp_id:
                     flags.append(f"MISSING_TEMPORAL_ID_{len(missing_temp_id)}_SLICES")
                 
                 # Check if all temporal groups have equal slices
                 slice_counts = [len(slices) for slices in temp_groups.values()]
                 if len(set(slice_counts)) > 1:
-                    flags.append("UNEQUAL_SLICES_PER_TEMPORAL_POS")
+                    blocking_flags.append("UNEQUAL_SLICES_PER_TEMPORAL_POS")
                     details["slices_per_temporal"] = {k: len(temp_groups[k]) for k in sorted(temp_groups.keys())}
                 
-                # Check if slices per temporal position < 20
+                # Check if slices per temporal position < 20 (BLOCKING)
                 min_slices = min(slice_counts) if slice_counts else 0
                 if min_slices > 0 and min_slices < 20:
-                    flags.append(f"LOW_SLICE_COUNT_{min_slices}")
+                    blocking_flags.append(f"LOW_SLICE_COUNT_{min_slices}")
                 
-                # Check if less than minimum temporal positions (phases too few)
+                # Check if less than minimum temporal positions (phases too few) - BLOCKING
                 if len(temp_groups) < Config.get_min_temporal_positions():
-                    flags.append("PHASES_TOO_FEW")
+                    blocking_flags.append("PHASES_TOO_FEW")
                 
                 details["temporal_positions"] = len(temp_groups)
                 details["total_dicoms"] = len(all_metadata)
         
         # Case 3: 2 entries
         elif len(filtered_entries) == 2:
-            flags.append("UNEXPECTED_TWO_SEQUENCES")
+            blocking_flags.append("UNEXPECTED_ONLY_TWO_SEQUENCES")
         
-        # Case 4: 3 entries
-        elif len(filtered_entries) == 3:
-            flags.append("UNEXPECTED_THREE_SEQUENCES")
+        # Combine all flags for return, but only blocking flags determine status
+        all_flags = blocking_flags + flags
         
-        # Determine final status
-        status = "FLAGGED" if flags else "OK"
-        details["flags"] = flags
+        # Determine final status - only FLAGGED if blocking flags exist
+        status = "FLAGGED" if blocking_flags else "OK"
+        details["flags"] = all_flags
         
-        return status, flags, details
+        return status, all_flags, details
