@@ -63,11 +63,19 @@ Edit this file to set your data paths and configure which centers to process:
 
 ```yaml
 paths:
+  # List of medical centers to process
   centers:
-    - KAUNO      # List of centers to process
-    - HCB
-  dicom_root: /dataall/dicoms              # Root directory with DICOM data
-  results_dir: /dataall/eucanimage_second_try  # Output directory for NIfTI files
+    - 'center 1'
+    - 'center 2'
+  
+  # Root directory containing per-center DICOM input folders
+  # Expected structure: <dicom_root>/<center_name>/<patient_id>/...
+  dicom_root: 'path to dicom input directory'
+  
+  # Root directory for NIfTI output
+  # Output structure: <results_dir>/<center>/dce/images/ and <center>/dce/dicom_metadata/
+  results_dir: 'path to output directory'
+
 ```
 
 #### `config_params.json` (Processing Parameters)
