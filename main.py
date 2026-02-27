@@ -108,10 +108,6 @@ if __name__ == "__main__":
             if result["nifti_validation"]:
                 validation_details[patient_id] = result["nifti_validation"]
 
-            # if idx == 5:  # For testing, limit to first 3 patients
-            #     print("\n  Reached test limit of 5 patients. Stopping early.")
-            #     break
-
         print(f"\n{'='*70}")
         print("  SAVING RESULTS")
         print('='*70)
