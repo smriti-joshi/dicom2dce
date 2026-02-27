@@ -2,6 +2,7 @@
 
 A DICOM processing pipeline to take you from messy DICOM folders to consistent DCE-MRI NIfTI sequences. Currently, the pipeline focuses on processing Breast DCE-MRI data. There are two components: an **Automatic Pipeline** to process the data, followed by an **Interactive Manual Review** for flagged cases.
 
+Note: In this current version, it assumes that there is only one timepoint (series corresponding to one Study Date) per patient. Working on integrating multiple timepoints!
 ## 📤 Output
 
 ### Directory Structure
