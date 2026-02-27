@@ -1,3 +1,5 @@
+"""Stage 1: DICOM metadata extraction from patient directories."""
+
 import pydicom
 import os
 import json

@@ -61,16 +61,16 @@ For cases ```FLAGGED``` during automated processing (due to consistency check fa
 ### Running Manual Processing
 
 ```bash
-python -m dicom2dce.post_manual_processor
+python -m dicom2dce.manual_review
 ```
 
 Optional arguments:
 ```bash
 # Process specific center only
-python -m dicom2dce.post_manual_processor --center kauno
+python -m dicom2dce.manual_review --center kauno
 
 # Use custom results directory
-python -m dicom2dce.post_manual_processor --results-dir /path/to/results
+python -m dicom2dce.manual_review --results-dir /path/to/results
 ```
 
 ### Manual Processing Workflow
@@ -100,14 +100,21 @@ python -m dicom2dce.post_manual_processor --results-dir /path/to/results
 5. **CSV Updates** - Both main and per-patient CSVs are updated with:
    - Status: `MANUALLY_RUN`
    - All nifti validation fields 
-## �📁 Project Structure
+## 📁 Project Structure
 
-- `process_dicom.py` - Main pipeline orchestrator
-- `pipeline/` - Processing stages (extraction, filtering, conversion, validation)
-- `config_paths.yaml` - User configuration (paths and centers)
+- `main.py` - CLI entry point for automated processing
+- `manual_review.py` - Interactive review tool for flagged cases
+- `process_dicom.py` - Pipeline orchestrator
+- `pipeline/` - Processing stages:
+  - `config.py` - Configuration management
+  - `stage1_extractor.py` - DICOM metadata extraction
+  - `stage2_filter.py` - DCE sequence filtering
+  - `stage3_dcmconsistency.py` - Consistency checks
+  - `stage4_niiconvert.py` - NIfTI conversion (dcm2niix)
+  - `stage5_niivalidate.py` - NIfTI quality validation
+  - `stage6_report.py` - CSV/JSON reporting
+- `config_paths.yaml.example` - Template for path configuration
 - `config_params.json` - Processing parameters (filtering, validation thresholds)
-- `main.py` - Entry point for automated processing
-- `manual_processor.py` - Entry point for manual corrections.
 
 ## � Processing Flags Reference
 
@@ -174,6 +181,10 @@ results/
 pip install -e .
 ```
 
+This also installs CLI commands:
+- `dicom2dce` — run the full automated pipeline
+- `dicom2dce-review` — interactive review of flagged cases
+
 ### 📦 Requirements
 
 - Python >= 3.9
@@ -182,39 +193,30 @@ pip install -e .
 - numpy
 - tqdm
 - pyyaml
+- [dcm2niix](https://github.com/rordenlab/dcm2niix) (must be on PATH)
 
 ## 🚀 Quick Start
 
 ### ⚙️ Configuration
 
-The pipeline uses two configuration files:
-
-#### `config_paths.yaml` (User Configuration)
-Edit this file to set your data paths and configure which centers to process:
-
-```yaml
-paths:
-  # List of medical centers to process
-  centers:
-    - 'center 1'
-    - 'center 2'
-  
-  # Root directory containing per-center DICOM input folders
-  # Expected structure: <dicom_root>/<center_name>/<patient_id>/...
-  dicom_root: 'path to dicom input directory'
-  
-  # Root directory for NIfTI output
-  # Output structure: <results_dir>/<center>/dce/images/ and <center>/dce/dicom_metadata/
-  results_dir: 'path to output directory'
-
+1. Copy the paths template and edit it:
+```bash
+cp config_paths.yaml.example config_paths.yaml
 ```
 
-#### `config_params.json` (Processing Parameters)
-This file contains filtering and validation parameters. Edit only if you need to adjust:
-- DCE sequence filtering criteria (TR/TE limits, image type exclusions)
-- Consistency check thresholds (slice counts, temporal positions)
-- Processing options (DICOM reading, natural sorting)
+2. Edit `config_paths.yaml` with your data paths:
+```yaml
+paths:
+  centers:
+    - 'CENTER_NAME'
+  dicom_root: '/path/to/dicom/input'
+  results_dir: '/path/to/output'
+```
 
-These defaults work well for breast DCE-MRI but can be customized for other use cases.
+3. (Optional) Edit `config_params.json` to adjust:
+   - DCE sequence filtering criteria (TR/TE limits, image type exclusions)
+   - Consistency check thresholds (slice counts, temporal positions)
+   - Processing options (DICOM reading, natural sorting)
 
+   Defaults work well for breast DCE-MRI but can be customized for other use cases.
 

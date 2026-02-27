@@ -1,17 +1,19 @@
-import pydicom
+"""
+Pipeline orchestrator: ties together extraction, filtering, consistency
+checks, NIfTI conversion, validation, and reporting.
+"""
+
 import os
 import json
-import csv
-from tqdm import tqdm
-import numpy as np
-import re
 
 from .pipeline.stage1_extractor import ExtractionStage
 from .pipeline.stage2_filter import FilteringStage
 from .pipeline.stage3_dcmconsistency import VisualChecks
 from .pipeline.stage4_niiconvert import process_patient_json
 from .pipeline.stage5_niivalidate import validate_patient_nifti
-from .pipeline.stage6_report import flatten_validation_result, save_patient_csv_row
+from .pipeline.stage6_report import (
+    flatten_validation_result, flatten_consistency_details, save_patient_csv_row,
+)
 
 
 class DicomProcessingPipeline:
@@ -91,132 +93,6 @@ class DicomProcessingPipeline:
         status, flags, details = self.check_consistency(sorted_entries, patient_id)
         
         return summary, sorted_entries, status, flags, details
-
-    def process_and_save_csv_report(self, center, center_root_dir, extract_out_dir, filter_out_dir, csv_out_dir):
-        """
-        Process all patients in a center and generate CSV report with consistency check results.
-        
-        Args:
-            center: Center name/identifier
-            center_root_dir: Root directory containing patient subdirectories
-            extract_out_dir: Output directory for extracted DICOM metadata
-            filter_out_dir: Output directory for filtered DICOM data
-            csv_out_dir: Output directory for CSV report
-            
-        Returns:
-            (results_list, summary_stats): List of result dicts and summary statistics
-        """
-        results = []
-        
-        # Check if center directory exists
-        if not os.path.isdir(center_root_dir):
-            print(f"Center directory not found: {center_root_dir}")
-            return results, {}
-        
-        # Get list of patient directories
-        patient_dirs = sorted([d for d in os.listdir(center_root_dir)
-                               if os.path.isdir(os.path.join(center_root_dir, d))])
-        
-        print(f"\nExtracting and filtering DICOM metadata...")
-        
-        # Process each patient
-        for idx, patient_dir_name in enumerate(patient_dirs, 1):
-            patient_dir = os.path.join(center_root_dir, patient_dir_name)
-            
-            # Extract, filter, and check consistency in one pass
-            filtered_data = self.extract_filter_and_save(
-                patient_dir,
-                extract_out_dir,
-                filter_out_dir,
-                save_extracted=True,
-                save_filtered=True
-            )
-            
-            # Process results
-            if filtered_data and filtered_data[0] is not None:
-                try:
-                    summary, filtered_entries, status, flags, details = filtered_data
-                    
-                    # Extract patient_id from summary dict
-                    if summary and isinstance(summary, dict):
-                        patient_id = list(summary.keys())[0]
-                    else:
-                        continue
-                        
-                    # Format flags for CSV
-                    flags_str = " | ".join(flags) if flags else "OK"
-                    
-                    # Extract details fields
-                    temporal_positions = details.get("temporal_positions", "")
-                    total_dicoms = details.get("total_dicoms", "")
-                    folder_names = json.dumps(details.get("folder_names", [])) if details.get("folder_names") else ""
-                    slices_per_temporal = json.dumps(details.get("slices_per_temporal", {})) if details.get("slices_per_temporal") else ""
-                    folder_slice_counts = json.dumps(details.get("folder_slice_counts", {})) if details.get("folder_slice_counts") else ""
-                    low_similarity_pairs = json.dumps(details.get("low_similarity_pairs", [])) if details.get("low_similarity_pairs") else ""
-                    
-                    # Add result row
-                    results.append({
-                        "patient_id": patient_id,
-                        "status": status,
-                        "entry_count": len(filtered_entries),
-                        "flags": flags_str,
-                        "folder_names": folder_names,
-                        "temporal_positions": temporal_positions,
-                        "total_dicoms": total_dicoms,
-                        "slices_per_temporal": slices_per_temporal,
-                        "folder_slice_counts": folder_slice_counts,
-                        "low_similarity_pairs": low_similarity_pairs,
-                    })
-                    
-                    # Print progress
-                    status_icon = "✓" if status == "OK" else "⚠️"
-                    print(f"[{idx}] {patient_id}: {status_icon} {status} - {flags_str if flags else 'No issues'}")
-                    
-                except Exception as e:
-                    print(f"Error processing {patient_dir_name}: {e}")
-                    continue
-        
-        # Ensure output directories exist
-        os.makedirs(csv_out_dir, exist_ok=True)
-        os.makedirs(filter_out_dir, exist_ok=True)
-        
-        # Save results to CSV
-        csv_output_file = os.path.join(csv_out_dir, f"consistency_check_results_{center.lower()}.csv")
-        
-        fieldnames = [
-            "patient_id",
-            "status",
-            "entry_count",
-            "flags",
-            "folder_names",
-            "temporal_positions",
-            "total_dicoms",
-            "slices_per_temporal",
-            "folder_slice_counts",
-            "low_similarity_pairs",
-        ]
-        
-        # Write CSV
-        with open(csv_output_file, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(results)
-        
-        print(f"\n{'='*60}")
-        print(f"✓ Results saved to: {csv_output_file}")
-        
-        # Calculate and return summary statistics
-        ok_count = sum(1 for r in results if r["status"] == "OK")
-        flagged_count = len(results) - ok_count
-        summary_stats = {
-            "total": len(results),
-            "ok": ok_count,
-            "flagged": flagged_count
-        }
-        
-        print(f"Summary: {ok_count} OK, {flagged_count} FLAGGED out of {len(results)} patients")
-        
-        return results, summary_stats
 
     def process_patient_with_nifti_conversion(self, patient_dir, patient_dir_name, extract_out_dir, 
                                               filter_out_dir, nifti_images_root, nifti_metadata_root, csv_out_dir=None):
@@ -352,17 +228,7 @@ class DicomProcessingPipeline:
                     "nifti_overall_status": result["nifti_validation_status"],
                 }
                 csv_row.update(flatten_validation_result(result["nifti_validation"]))
-                
-                # Add consistency check details from the filtered_data
-                if 'details' in locals():
-                    csv_row.update({
-                        "consistency_temporal_positions": details.get("temporal_positions", ""),
-                        "consistency_total_dicoms": details.get("total_dicoms", ""),
-                        "consistency_folder_names": json.dumps(details.get("folder_names", [])) if details.get("folder_names") else "",
-                        "consistency_slices_per_temporal": json.dumps(details.get("slices_per_temporal", {})) if details.get("slices_per_temporal") else "",
-                        "consistency_folder_slice_counts": json.dumps(details.get("folder_slice_counts", {})) if details.get("folder_slice_counts") else "",
-                        "consistency_low_similarity_pairs": json.dumps(details.get("low_similarity_pairs", [])) if details.get("low_similarity_pairs") else "",
-                    })
+                csv_row.update(flatten_consistency_details(result["consistency_details"]))
                 
                 save_patient_csv_row(csv_row, csv_out_dir, result["patient_id"])
             
@@ -373,7 +239,4 @@ class DicomProcessingPipeline:
             result["status"] = "ERROR"
             result["nifti_conversion"] = "SKIPPED"
             return result
-
-
-
 

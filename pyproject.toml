@@ -12,14 +12,19 @@ dependencies = [
     "nibabel",
     "numpy",
     "tqdm",
+    "pyyaml",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest"]
+
+[project.scripts]
+dicom2dce = "dicom2dce.main:main"
+dicom2dce-review = "dicom2dce.manual_review:main"
 
 [tool.setuptools.packages.find]
 where = [".."]
 include = ["dicom2dce*"]
 
 [tool.setuptools.package-data]
-dicom2dce = ["config.json"]
+dicom2dce = ["config_params.json", "config_paths.yaml"]

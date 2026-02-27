@@ -1,0 +1,18 @@
+# dicom2dce Pipeline Configuration - Paths
+#
+# Copy this file to config_paths.yaml and edit the values below.
+#
+#   cp config_paths.yaml.example config_paths.yaml
+
+paths:
+  # List of medical centers to process
+  centers:
+    - 'CENTER_NAME'
+
+  # Root directory containing per-center DICOM input folders
+  # Expected structure: <dicom_root>/<center_name>/<patient_id>/...
+  dicom_root: '/path/to/dicom/input'
+
+  # Root directory for NIfTI output
+  # Output structure: <results_dir>/<center>/dce/images/ and <center>/dce/dicom_metadata/
+  results_dir: '/path/to/output'

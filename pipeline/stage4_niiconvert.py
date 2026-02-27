@@ -1,3 +1,5 @@
+"""Stage 4: DICOM to NIfTI conversion via dcm2niix."""
+
 import os
 import json
 import subprocess

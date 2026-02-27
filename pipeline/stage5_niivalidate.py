@@ -1,9 +1,11 @@
+"""Stage 5: NIfTI validation — quality checks on converted volumes."""
+
 import os
 import json
 import nibabel as nib
 import numpy as np
 from datetime import datetime
-from .stage2_filter import Config
+from .config import Config
 
 
 def parse_acquisition_time(acq_time, trigger_time=None):

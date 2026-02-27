@@ -7,6 +7,35 @@ import json
 import csv
 
 
+def flatten_consistency_details(details):
+    """
+    Flatten consistency check details dict into CSV-ready columns.
+
+    Args:
+        details: Dictionary from stage3 consistency checks (or None).
+
+    Returns:
+        Dictionary with consistency_* keys ready for CSV writing.
+    """
+    if not details:
+        return {
+            "consistency_temporal_positions": "",
+            "consistency_total_dicoms": "",
+            "consistency_folder_names": "",
+            "consistency_slices_per_temporal": "",
+            "consistency_folder_slice_counts": "",
+            "consistency_low_similarity_pairs": "",
+        }
+    return {
+        "consistency_temporal_positions": details.get("temporal_positions", ""),
+        "consistency_total_dicoms": details.get("total_dicoms", ""),
+        "consistency_folder_names": json.dumps(details.get("folder_names", [])) if details.get("folder_names") else "",
+        "consistency_slices_per_temporal": json.dumps(details.get("slices_per_temporal", {})) if details.get("slices_per_temporal") else "",
+        "consistency_folder_slice_counts": json.dumps(details.get("folder_slice_counts", {})) if details.get("folder_slice_counts") else "",
+        "consistency_low_similarity_pairs": json.dumps(details.get("low_similarity_pairs", [])) if details.get("low_similarity_pairs") else "",
+    }
+
+
 def flatten_validation_result(validation_result):
     """
     Flatten nested validation result into flat dictionary for CSV columns.

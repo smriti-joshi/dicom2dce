@@ -1,5 +1,8 @@
-__pycache__/*
-.gitignore
-.pyc/*
-pipeline/__pycache__/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
 
+# User-specific path config (use config_paths.yaml.example as template)
+config_paths.yaml

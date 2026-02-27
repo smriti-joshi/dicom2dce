@@ -1,14 +1,13 @@
 """
-Manual processor for flagged cases from DICOM processing pipeline.
+Interactive review tool for flagged cases from the dicom2dce pipeline.
 
-This script:
-1. Reads the processing report CSV to identify flagged cases
-2. Displays flagged case information in a structured format
-3. Allows users to select sequences for manual NIfTI conversion
-4. Performs the conversion for selected sequences
+Reads the processing report CSV to identify patients that failed automated
+processing, displays detailed diagnostic information, and allows manual
+sequence selection for NIfTI conversion.
 
 Usage:
-    python manual_processor_flagged_cases.py --center <center_name> --results-dir <path>
+    python -m dicom2dce.manual_review
+    python -m dicom2dce.manual_review --center kauno
 """
 
 import os
@@ -19,7 +18,7 @@ from pathlib import Path
 from dicom2dce.pipeline.stage4_niiconvert import process_patient_json
 from dicom2dce.pipeline.stage5_niivalidate import validate_patient_nifti
 from dicom2dce.pipeline.stage6_report import flatten_validation_result
-from dicom2dce.pipeline.stage2_filter import Config
+from dicom2dce.pipeline.config import Config
 
 
 class FlaggedCaseProcessor:

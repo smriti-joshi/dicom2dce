@@ -7,7 +7,7 @@ import pydicom
 import os
 from collections import defaultdict
 from difflib import SequenceMatcher
-from .stage2_filter import Config
+from .config import Config
 
 
 class VisualChecks:
