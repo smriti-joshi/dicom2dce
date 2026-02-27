@@ -1,4 +1,5 @@
 import os
+import json
 from dicom2dce.process_dicom import DicomProcessingPipeline
 from dicom2dce.pipeline.stage2_filter import Config
 from dicom2dce.pipeline.stage6_report import flatten_validation_result, save_center_results, print_summary
@@ -89,10 +90,27 @@ if __name__ == "__main__":
                 "nifti_overall_status": val_status,
             }
             csv_row.update(flatten_validation_result(result["nifti_validation"]))
+            
+            # Add consistency check details
+            if result["consistency_details"]:
+                details = result["consistency_details"]
+                csv_row.update({
+                    "consistency_temporal_positions": details.get("temporal_positions", ""),
+                    "consistency_total_dicoms": details.get("total_dicoms", ""),
+                    "consistency_folder_names": json.dumps(details.get("folder_names", [])) if details.get("folder_names") else "",
+                    "consistency_slices_per_temporal": json.dumps(details.get("slices_per_temporal", {})) if details.get("slices_per_temporal") else "",
+                    "consistency_folder_slice_counts": json.dumps(details.get("folder_slice_counts", {})) if details.get("folder_slice_counts") else "",
+                    "consistency_low_similarity_pairs": json.dumps(details.get("low_similarity_pairs", [])) if details.get("low_similarity_pairs") else "",
+                })
+            
             csv_results.append(csv_row)
 
             if result["nifti_validation"]:
                 validation_details[patient_id] = result["nifti_validation"]
+
+            # if idx == 5:  # For testing, limit to first 3 patients
+            #     print("\n  Reached test limit of 5 patients. Stopping early.")
+            #     break
 
         print(f"\n{'='*70}")
         print("  SAVING RESULTS")

@@ -285,7 +285,6 @@ def process_patient_json(json_path, images_root, metadata_root, interactive=Fals
             seq_idx_to_dicom_folder[i] = dicom_folder
     
     # Handle any trigger time files at patient level
-    print("\n" + "*"*50 + "Processing trigger times" + "*"*50)
     trigger_mapping = _handle_trigger_times_at_patient_level(patient_id, patient_images_dir, seq_idx_to_dicom_folder, all_dicom_folders)
     
     # Move all JSON sidecars to the metadata directory

@@ -97,7 +97,90 @@ This processes all configured centers and patients, generating:
 - Validation reports
 - CSV summaries of results
 
-## 📁 Project Structure
+## � Manual Processing
+
+For cases flagged during automated processing (due to consistency check failures or other issues), the manual processor allows you to:
+- Review flagged cases with detailed error information
+- Select specific sequences manually for problematic patients
+- Convert selected sequences to NIfTI
+- Run validation on the converted data
+- Automatically update CSV reports with results
+
+### When to Use Manual Processing
+
+Use the manual processor when:
+- A patient's case is flagged with `UNEQUAL_SLICES_PER_TEMPORAL_POS` or similar blocking errors
+- Multiple sequences were detected but the pipeline couldn't determine which ones are the valid DCE series
+- You want to manually override the automated filtering and select sequences yourself
+- Investigation of specific problem cases is needed
+
+### Running Manual Processing
+
+```bash
+python -m dicom2dce.post_manual_processor
+```
+
+Optional arguments:
+```bash
+# Process specific center only
+python -m dicom2dce.post_manual_processor --center kauno
+
+# Use custom results directory
+python -m dicom2dce.post_manual_processor --results-dir /path/to/results
+```
+
+### Manual Processing Workflow
+
+1. **Load Flagged Cases** - Script automatically loads all patients with status != 'OK' from the processing CSV
+2. **Review Case Details** - Shows:
+   - DICOM extraction summary (sequences found, parameters)
+   - Consistency check details (what failed and why)
+   - NIfTI conversion status
+   - Validation results (if previously converted)
+   - Summary of issues
+
+3. **Select Sequences** - View all detected sequences with parameters:
+   ```
+   Sequences for patient PATIENT_ID:
+   [0] /path/to/dicom_folder_1 (TR=4.2ms, TE=2.1ms, FA=12°)
+   [1] /path/to/dicom_folder_2 (TR=4.2ms, TE=2.1ms, FA=12°)
+   [2] /path/to/dicom_folder_3 (TR=100ms, TE=50ms, FA=90°)
+   ```
+   Enter space-separated indices: `0 1`
+
+4. **Automatic Processing** - Selected sequences are:
+   - Converted from DICOM to NIfTI using dcm2niix
+   - Validated automatically (signal integrity, temporal ordering, enhancement)
+   - Results summarized in console output
+
+5. **CSV Updates** - Both main and per-patient CSVs are updated with:
+   - Status: `MANUALLY_RUN`
+   - All validation fields (consistency checks, temporal validation, signal metrics)
+
+### Example Session
+
+```
+Loading flagged cases...
+Found 5 flagged patients
+
+Patient 1/5: PATIENT_001
+  Issue: UNEQUAL_SLICES_PER_TEMPORAL_POS
+  Sequences: 3 detected
+
+Sequences for PATIENT_001:
+[0] /data/PATIENT_001/series_001 (TR=4.2ms, TE=2.1ms, FA=12°)
+[1] /data/PATIENT_001/series_002 (TR=4.2ms, TE=2.1ms, FA=12°)
+[2] /data/PATIENT_001/series_003 (TR=100ms, TE=50ms, FA=90°)
+
+Select sequences (space-separated indices, or 'skip'): 0 1
+Processing 2 sequences...
+✓ Conversion complete
+✓ Validation passed
+✓ CSV updated (MANUALLY_RUN status)
+
+Process next patient? (y/n): y
+```
+## �📁 Project Structure
 
 - `process_dicom.py` - Main pipeline orchestrator
 - `pipeline/` - Processing stages (extraction, filtering, conversion, validation)

@@ -243,7 +243,8 @@ class DicomProcessingPipeline:
             "nifti_conversion": "SKIPPED",
             "nifti_error": None,
             "nifti_validation": None,
-            "nifti_validation_status": "NOT_RUN"
+            "nifti_validation_status": "NOT_RUN",
+            "consistency_details": None
         }
         
         try:
@@ -292,6 +293,7 @@ class DicomProcessingPipeline:
             result["status"] = status
             result["flags"] = " | ".join(flags) if flags else "OK"
             result["entry_count"] = len(filtered_entries)
+            result["consistency_details"] = details
             
             # STAGE 2: CONSISTENCY CHECK RESULT
             status_icon = "✓" if status == "OK" else "⚠️"
