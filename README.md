@@ -1,6 +1,6 @@
 # 🏥 dicom2dce
 
-A DICOM processing pipeline to take you from messy dicom folders to consistent DCE-MRI nifti sequences. Currently, the pipeline focuses only on processing Breast DCE-MRI data. This helps you automatically process the data, followed by user interactive script for flagged cases.
+A DICOM processing pipeline to take you from messy dicom folders to consistent DCE-MRI nifti sequences. Currently, the pipeline focuses only on processing Breast DCE-MRI data. There are two components: ```Automatic Pipeline``` process the data, followed by ```Interactive Manual Review``` for flagged cases.
 
 ## 🔄 Automatic Pipeline 
 
