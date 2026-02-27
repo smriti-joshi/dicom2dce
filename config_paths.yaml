@@ -5,13 +5,12 @@
 paths:
   # List of medical centers to process
   centers:
-    - 'center 1'
-    - 'center 2'
+    - 'HCB'
   
   # Root directory containing per-center DICOM input folders
   # Expected structure: <dicom_root>/<center_name>/<patient_id>/...
-  dicom_root: 'path to dicom input directory'
+  dicom_root: '/dataall/dicoms'
   
   # Root directory for NIfTI output
   # Output structure: <results_dir>/<center>/dce/images/ and <center>/dce/dicom_metadata/
-  results_dir: 'path to output directory'
+  results_dir: '/dataall/dicom2dce_results'

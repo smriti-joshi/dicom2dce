@@ -59,7 +59,7 @@ Additionally, a `PATIENT_ID_nifti_dicom_mapping.json` file maps each NIfTI to it
 
 ### CSV Reports
 
-**Center-level report** (`processing_report_center.csv`) — one row per patient with 22 columns covering:
+**Center-level report** (`processing_report_center.csv`) : one row per patient with 22 columns covering:
 
 | Group | Columns |
 |-------|---------|
@@ -68,9 +68,9 @@ Additionally, a `PATIENT_ID_nifti_dicom_mapping.json` file maps each NIfTI to it
 | NIfTI conversion | `nifti_conversion` |
 | NIfTI validation | `nifti_overall_status`, `val_consistency_status`, `val_consistency_issues`, `val_file_count`, `val_temporal_status`, `val_temporal_issues`, `val_time_gaps`, `val_signal_status`, `val_signal_issues`, `val_enhancement_ratio`, `val_peak_index` |
 
-**Per-patient CSVs** (`per_patient_validation_csvs/PATIENT_ID_results.csv`) — same schema, one row per run (allows tracking re-processing).
+**Per-patient CSVs** (`per_patient_validation_csvs/PATIENT_ID_results.csv`) : same schema, one row per run (allows tracking re-processing).
 
-**Validation details JSON** (`nifti_validation_details_center.json`) — detailed and nested nifti validation results for every patient.
+**Validation details JSON** (`nifti_validation_details_center.json`) : detailed and nested nifti validation results for every patient.
 
 ## 💾 Installation
 
@@ -79,8 +79,8 @@ pip install -e .
 ```
 
 This also installs CLI commands:
-- `dicom2dce` — run the full automated pipeline
-- `dicom2dce-review` — interactive review of flagged cases
+- `dicom2dce` : run the full automated pipeline
+- `dicom2dce-review` : interactive review of flagged cases
 
 ### 📦 Requirements
 
@@ -187,15 +187,15 @@ For cases `FLAGGED` during automated processing (due to consistency check failur
 
 ### Manual Review Workflow
 
-1. **Load Flagged Cases** — automatically loads all patients with status != 'OK' from the processing CSV
-2. **Review Case Details** — shows:
+1. **Load Flagged Cases** : automatically loads all patients with status != 'OK' from the processing CSV
+2. **Review Case Details** : shows:
    - DICOM extraction summary (sequences found, parameters)
    - Consistency check details (what failed and why)
    - NIfTI conversion status
    - Validation results (if previously converted)
    - Summary of issues
 
-3. **Select Sequences** — view all detected sequences with parameters:
+3. **Select Sequences** : view all detected sequences with parameters:
    ```
    Sequences for patient PATIENT_ID:
    [0] /path/to/dicom_folder_1 (TR=4.2ms, TE=2.1ms, FA=12°)
@@ -204,30 +204,30 @@ For cases `FLAGGED` during automated processing (due to consistency check failur
    ```
    Enter space-separated indices: `0 1`
 
-4. **Automatic Processing** — selected sequences are:
+4. **Automatic Processing** : selected sequences are:
    - Converted from DICOM to NIfTI using dcm2niix
    - Validated automatically (signal integrity, temporal ordering, enhancement)
    - Results summarized in console output
 
-5. **CSV Updates** — both main and per-patient CSVs are updated with:
+5. **CSV Updates** : both main and per-patient CSVs are updated with:
    - Status: `MANUALLY_RUN`
    - All NIfTI validation fields
 
 ## 📁 Project Structure
 
-- `main.py` — CLI entry point for automated processing
-- `manual_review.py` — interactive review tool for flagged cases
-- `process_dicom.py` — pipeline orchestrator
-- `pipeline/` — processing stages:
-  - `config.py` — configuration management
-  - `stage1_extractor.py` — DICOM metadata extraction
-  - `stage2_filter.py` — DCE sequence filtering
-  - `stage3_dcmconsistency.py` — consistency checks
-  - `stage4_niiconvert.py` — NIfTI conversion (dcm2niix)
-  - `stage5_niivalidate.py` — NIfTI quality validation
-  - `stage6_report.py` — CSV/JSON reporting
-- `config_paths.yaml.example` — template for path configuration
-- `config_params.json` — processing parameters (filtering, validation thresholds)
+- `main.py` : CLI entry point for automated processing
+- `manual_review.py` : interactive review tool for flagged cases
+- `process_dicom.py` : pipeline orchestrator
+- `pipeline/` : processing stages:
+  - `config.py` : configuration management
+  - `stage1_extractor.py` : DICOM metadata extraction
+  - `stage2_filter.py` : DCE sequence filtering
+  - `stage3_dcmconsistency.py` : consistency checks
+  - `stage4_niiconvert.py` : NIfTI conversion (dcm2niix)
+  - `stage5_niivalidate.py` : NIfTI quality validation
+  - `stage6_report.py` : CSV/JSON reporting
+- `config_paths.yaml.example` : template for path configuration
+- `config_params.json` : processing parameters (filtering, validation thresholds)
 
 ## 🚩 Processing Flags Reference
 
