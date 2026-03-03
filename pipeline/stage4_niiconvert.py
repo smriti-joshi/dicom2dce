@@ -32,40 +32,86 @@ def split_4d_nifti_overwrite(nifti_path, patient_images_dir, patient_id, seq_idx
     
     Also duplicates associated JSON sidecar for each volume.
     """
-    img = nib.load(nifti_path)
-    data = img.get_fdata()
-    if data.ndim == 4:
+    print(f"  [DEBUG] Splitting 4D NIfTI: {os.path.basename(nifti_path)}")
+    
+    # Verify file exists
+    if not os.path.exists(nifti_path):
+        print(f"  [ERROR] Expected 4D NIfTI file not found: {nifti_path}")
+        return 0
+    
+    try:
+        img = nib.load(nifti_path)
+        data = img.get_fdata()
+        
+        # Only process if it's actually 4D
+        if data.ndim != 4:
+            print(f"  [WARNING] Expected 4D but got {data.ndim}D. Not splitting.")
+            return 0
+        
         n_vols = data.shape[3]
+        print(f"  [DEBUG] 4D file has {n_vols} volumes, will create indices {seq_idx} to {seq_idx + n_vols - 1}")
+        
+        # IMPORTANT: Rename the original 4D file to a temporary name BEFORE creating split files
+        # This prevents overwriting the original when we save the first split volume (which has the same index)
+        temp_4d_path = nifti_path.replace('.nii.gz', '_temp_4d.nii.gz')
+        os.rename(nifti_path, temp_4d_path)
+        print(f"  [DEBUG] Renamed original 4D file to temporary: {os.path.basename(temp_4d_path)}")
+        
         nifti_basename = os.path.basename(nifti_path).replace('.nii.gz', '')
         json_path = os.path.join(patient_images_dir, f"{nifti_basename}.json")
+        temp_json_path = json_path.replace('.json', '_temp.json')
+        
+        # Rename JSON sidecar too
+        if os.path.exists(json_path):
+            os.rename(json_path, temp_json_path)
         
         # Read original JSON if it exists
         json_data = None
-        if os.path.exists(json_path):
-            with open(json_path, "r") as f:
+        if os.path.exists(temp_json_path):
+            with open(temp_json_path, "r") as f:
                 json_data = json.load(f)
         
+        # Now load from temp file and split
+        img = nib.load(temp_4d_path)
+        data = img.get_fdata()
+        
         # Split NII volumes and duplicate JSON for each
+        created_files = []
         for i in range(n_vols):
             out_name = f"{patient_id}_{seq_idx+i:04d}.nii.gz"
             out_path = os.path.join(patient_images_dir, out_name)
-            vol_img = nib.Nifti1Image(data[..., i], img.affine, img.header)
-            nib.save(vol_img, out_path)
-            
-            # Duplicate JSON for each volume with matching index
-            if json_data is not None:
-                json_out_name = f"{patient_id}_{seq_idx+i:04d}.json"
-                json_out_path = os.path.join(patient_images_dir, json_out_name)
-                with open(json_out_path, "w") as f:
-                    json.dump(json_data, f, indent=2)
+            try:
+                vol_img = nib.Nifti1Image(data[..., i], img.affine, img.header)
+                nib.save(vol_img, out_path)
+                print(f"    ✓ Created: {out_name}")
+                created_files.append(out_path)
+                
+                # Duplicate JSON for each volume with matching index
+                if json_data is not None:
+                    json_out_name = f"{patient_id}_{seq_idx+i:04d}.json"
+                    json_out_path = os.path.join(patient_images_dir, json_out_name)
+                    with open(json_out_path, "w") as f:
+                        json.dump(json_data, f, indent=2)
+            except Exception as e:
+                print(f"    ✗ FAILED to create {out_name}: {e}")
         
-        # Remove original 4D NII and JSON
-        os.remove(nifti_path)
-        if os.path.exists(json_path):
-            os.remove(json_path)
+        # Remove temporary 4D NII and JSON
+        if len(created_files) == n_vols:
+            print(f"  [DEBUG] All {n_vols} volumes created successfully. Removing temporary 4D file: {os.path.basename(temp_4d_path)}")
+            os.remove(temp_4d_path)
+            if os.path.exists(temp_json_path):
+                os.remove(temp_json_path)
+        else:
+            print(f"  [WARNING] Only created {len(created_files)} of {n_vols} volumes. Keeping temporary 4D file: {os.path.basename(temp_4d_path)}")
+            print(f"  [WARNING] Created files: {[os.path.basename(f) for f in created_files]}")
         
         return n_vols
-    return 0
+        
+    except Exception as e:
+        print(f"  [ERROR] Failed to split 4D NIfTI: {e}")
+        import traceback
+        traceback.print_exc()
+        return 0
 
 
 def _process_single_sequence(
@@ -83,16 +129,19 @@ def _process_single_sequence(
     """
 
     out_basename = f"{patient_id}_{seq_idx:04d}"
+    print(f"  [DEBUG] Processing sequence at index {seq_idx}: {os.path.basename(dicom_folder)}")
     convert_dicom_to_nifti(dicom_folder, patient_images_dir, out_name=out_basename)
     final_nii_path = os.path.join(patient_images_dir, f"{out_basename}.nii.gz")
 
     # Check if the pre-contrast baseline file was created
     if not os.path.exists(final_nii_path):
+        print(f"  [WARNING] Expected file not created: {out_basename}.nii.gz")
         return seq_idx
 
     # Check if the baseline file is 4D or 3D
     img = nib.load(final_nii_path)
     is_4d = img.get_fdata().ndim == 4
+    print(f"    ✓ Created: {out_basename}.nii.gz ({'4D' if is_4d else '3D'})")
     
     if is_4d:
         # dcm2niix created a 4D baseline file, need to split it
@@ -100,19 +149,24 @@ def _process_single_sequence(
             final_nii_path, patient_images_dir, patient_id, seq_idx
         )
         if baseline_volumes > 0:
+            print(f"  [DEBUG] Successfully split into {baseline_volumes} volumes, adding to mapping:")
             for i in range(baseline_volumes):
+                nifti_file = os.path.join(
+                    patient_images_dir,
+                    f"{patient_id}_{seq_idx + i:04d}.nii.gz",
+                )
                 mapping.append(
                     {
-                        "nifti_image": os.path.join(
-                            patient_images_dir,
-                            f"{patient_id}_{seq_idx + i:04d}.nii.gz",
-                        ),
+                        "nifti_image": nifti_file,
                         "dicom_folder": dicom_folder,
                     }
                 )
+                print(f"    + Mapped: {os.path.basename(nifti_file)}")
+            print(f"  [DEBUG] seq_idx updated: {seq_idx} -> {seq_idx + baseline_volumes}")
             seq_idx += baseline_volumes
         else:
             # Fallback: add 4D file as-is
+            print(f"  [WARNING] Split failed, adding original 4D file as-is")
             mapping.append(
                 {
                     "nifti_image": final_nii_path,
@@ -128,6 +182,7 @@ def _process_single_sequence(
                 "dicom_folder": dicom_folder,
             }
         )
+        print(f"  [DEBUG] Added 3D sequence to mapping, seq_idx now: {seq_idx} -> {seq_idx + 1}")
         seq_idx += 1
 
     return seq_idx
