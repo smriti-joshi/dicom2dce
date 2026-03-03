@@ -188,6 +188,38 @@ def _process_single_sequence(
     return seq_idx
 
 
+
+
+def _handle_multi_echo_files_at_patient_level(patient_id, patient_images_dir):
+    """Remove multi-echo (_Eq_*) files from patient directory.
+    
+    When dcm2niix encounters multiple echo times in a DICOM folder, it creates:
+    - Primary echo: patient_id_0000.nii.gz
+    - Secondary echoes: patient_id_0000_Eq_1.nii.gz, patient_id_0000_Eq_2.nii.gz, etc.
+    
+    For DCE analysis, only the primary echo is typically needed, so this function
+    removes the extra echo files (keeping the primary).
+    
+    Args:
+        patient_id: Patient identifier
+        patient_images_dir: Directory containing patient NIfTI images
+    """
+    # Find and remove _Eq_* files (multi-echo duplicates - typically not needed)
+    echo_pattern = os.path.join(patient_images_dir, f"{patient_id}_*_Eq_*.nii.gz")
+    echo_files = glob.glob(echo_pattern)
+    
+    if echo_files:
+        print(f"  [DEBUG] Found {len(echo_files)} multi-echo file(s) - removing as extras (keeping primary echo):")
+        for echo_file in echo_files:
+            basename = os.path.basename(echo_file)
+            print(f"    Removing: {basename}")
+            os.remove(echo_file)
+            # Also remove associated JSON sidecar
+            json_file = echo_file.replace('.nii.gz', '.json')
+            if os.path.exists(json_file):
+                os.remove(json_file)
+
+
 def _handle_trigger_times_at_patient_level(patient_id, patient_images_dir, seq_idx_to_dicom_folder, all_dicom_folders=None):
     """Handle trigger time files at patient level after all conversions.
     
@@ -216,7 +248,7 @@ def _handle_trigger_times_at_patient_level(patient_id, patient_images_dir, seq_i
     else:
         next_idx = max(existing_indices) + 1
     
-    # Find all trigger time files
+    # Find all trigger time files (but skip _Eq_* echo files)
     trigger_pattern = os.path.join(patient_images_dir, f"{patient_id}_????_t*.nii.gz")
     trigger_files = glob.glob(trigger_pattern)
     
@@ -340,6 +372,9 @@ def process_patient_json(json_path, images_root, metadata_root, interactive=Fals
         # Store mapping for all indices created by this sequence
         for i in range(seq_idx_before, seq_idx):
             seq_idx_to_dicom_folder[i] = dicom_folder
+    
+    # Handle multi-echo files (remove secondary echoes, keep primary)
+    _handle_multi_echo_files_at_patient_level(patient_id, patient_images_dir)
     
     # Handle any trigger time files at patient level
     trigger_mapping = _handle_trigger_times_at_patient_level(patient_id, patient_images_dir, seq_idx_to_dicom_folder, all_dicom_folders)
