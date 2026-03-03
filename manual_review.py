@@ -428,6 +428,39 @@ class FlaggedCaseProcessor:
             print(f"✗ Error loading JSON for {patient_id}: {e}")
             return None
     
+    def _load_all_dicom_files(self, patient_id):
+        """Load all unfiltered DICOM files for a patient as fallback."""
+        all_dicom_dir = os.path.join(
+            self.center_results, "intermediate_results", "all_dicom_files"
+        )
+        
+        if not os.path.exists(all_dicom_dir):
+            return None
+        
+        # Try multiple naming patterns
+        json_patterns = [
+            f"{patient_id}_all.json",
+            f"{patient_id}.json"
+        ]
+        
+        for pattern in json_patterns:
+            json_path = os.path.join(all_dicom_dir, pattern)
+            if os.path.exists(json_path):
+                try:
+                    with open(json_path, 'r') as f:
+                        data = json.load(f)
+                    # Handle both grouped and flat entry formats
+                    if isinstance(data, dict) and patient_id in data:
+                        return {patient_id: data[patient_id]}
+                    elif isinstance(data, dict) and len(data) == 1:
+                        return data
+                    else:
+                        return {patient_id: data} if isinstance(data, list) else None
+                except Exception as e:
+                    pass
+        
+        return None
+    
     def display_sequences(self, filtered_data, patient_id):
         """Display available DicomPaths for selection."""
         if not filtered_data or patient_id not in filtered_data:
@@ -463,7 +496,12 @@ class FlaggedCaseProcessor:
             # Extract scan folder based on where paths first differ
             scan_folder = self._extract_scan_folder(dicom_path, common_prefix)
             
-            print(f"  [{idx}] {scan_folder}")
+            # Show series description if available
+            series_desc = entry.get('SeriesDescription', '')
+            if series_desc:
+                print(f"  [{idx}] {scan_folder} - {series_desc}")
+            else:
+                print(f"  [{idx}] {scan_folder}")
             
             # Show parameters if available
             params = []
@@ -765,14 +803,39 @@ class FlaggedCaseProcessor:
             
             # Load and display sequences
             filtered_data = self.load_filtered_json(patient_id)
+            show_all = False
+            
+            # If filtered data is empty, try loading all_dicom_files as fallback
+            if not filtered_data:
+                print(f"  ⚠️  No filtered DICOM data found. Loading all available sequences...")
+                filtered_data = self._load_all_dicom_files(patient_id)
+                if filtered_data:
+                    print(f"  ℹ️  Showing ALL available DICOM sequences instead of filtered ones.")
+                    show_all = True
+            
             if not filtered_data:
                 skipped_count += 1
                 continue
             
+            # Display filtered sequences
             all_entries = self.display_sequences(filtered_data, patient_id)
             if not all_entries:
                 skipped_count += 1
                 continue
+            
+            # Ask if user wants to see all sequences instead
+            if not show_all:
+                see_all = input(f"\n  Would you like to see ALL available DICOM sequences instead? (y/n): ").strip().lower()
+                if see_all == 'y':
+                    all_dicom_data = self._load_all_dicom_files(patient_id)
+                    if all_dicom_data:
+                        print(f"\n  ℹ️  Showing ALL available DICOM sequences:")
+                        all_entries = self.display_sequences(all_dicom_data, patient_id)
+                        if not all_entries:
+                            skipped_count += 1
+                            continue
+                    else:
+                        print(f"  ⚠️  Could not load all available sequences.")
             
             # Get user selection
             selected_entries = self.get_user_sequence_selection(all_entries)
