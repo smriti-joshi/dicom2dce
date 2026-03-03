@@ -144,7 +144,9 @@ def check_nifti_consistency(nifti_files, images_dict, patient_id):
     images_list = [(fname, images_dict[fname]) for fname in nifti_files if fname in images_dict]
     ref_shape = images_list[0][1].shape
     ref_affine = images_list[0][1].affine
+    ref_fname = images_list[0][0]
     metrics["reference_shape"] = ref_shape
+    metrics["reference_file"] = ref_fname
     
     dimension_mismatches = []
     orientation_mismatches = []
@@ -156,9 +158,9 @@ def check_nifti_consistency(nifti_files, images_dict, patient_id):
             orientation_mismatches.append(fname)
     
     if dimension_mismatches:
-        issues.append(f"Shape mismatches: {dimension_mismatches}")
+        issues.append(f"Shape mismatches (reference {ref_fname}: {ref_shape}): {dimension_mismatches}")
     if orientation_mismatches:
-        issues.append(f"Orientation mismatches: {orientation_mismatches}")
+        issues.append(f"Orientation mismatches (reference {ref_fname}): {orientation_mismatches}")
     
     metrics["consistent_shapes"] = len(dimension_mismatches) == 0
     metrics["consistent_orientations"] = len(orientation_mismatches) == 0
