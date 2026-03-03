@@ -14,6 +14,7 @@ import os
 import json
 import csv
 import argparse
+import shutil
 from pathlib import Path
 from dicom2dce.pipeline.stage4_niiconvert import process_patient_json
 from dicom2dce.pipeline.stage5_niivalidate import validate_patient_nifti
@@ -634,10 +635,22 @@ class FlaggedCaseProcessor:
         
         # Check if already processed
         patient_nifti_dir = os.path.join(self.nifti_images_root, patient_id)
+        patient_metadata_dir = os.path.join(self.nifti_metadata_root, patient_id)
         if os.path.exists(patient_nifti_dir):
             response = input(f"  ⚠️  {patient_id} already has NIfTI images. Overwrite? (y/n): ").strip().lower()
             if response != 'y':
                 print(f"  ⊘ Skipping {patient_id}.")
+                return False
+            # Remove existing data before reprocessing
+            try:
+                if os.path.exists(patient_nifti_dir):
+                    shutil.rmtree(patient_nifti_dir)
+                    print(f"  🗑️  Removed existing NIfTI images for {patient_id}")
+                if os.path.exists(patient_metadata_dir):
+                    shutil.rmtree(patient_metadata_dir)
+                    print(f"  🗑️  Removed existing metadata for {patient_id}")
+            except Exception as e:
+                print(f"  ⚠️  Error removing existing files: {e}")
                 return False
         
         # Normalize entries: convert DicomPath to dicom_file for compatibility
