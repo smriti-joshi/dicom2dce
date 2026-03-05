@@ -43,7 +43,8 @@
         "mpr",
         "map",
         "normalized",
-        "nd"
+        "nd",
+        "ttp"
       ],
       "description": "Series description substrings to exclude from filtering"
     },

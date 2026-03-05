@@ -12,6 +12,8 @@ def convert_dicom_to_nifti(dicom_folder, output_path, out_name=None):
     """Convert DICOM folder to NIfTI using dcm2niix.
 
     If out_name is provided, use it as the output filename (without extension).
+    If dcm2niix fails due to JPEG decompression errors, attempts to decompress
+    using dcmdjpeg before retrying.
     """
     filename_template = out_name if out_name else "%s"
     cmd = [
@@ -24,7 +26,42 @@ def convert_dicom_to_nifti(dicom_folder, output_path, out_name=None):
         filename_template,
         dicom_folder,
     ]
-    subprocess.run(cmd, check=True)
+    
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        error_text = e.stderr + e.stdout if e.stderr and e.stdout else str(e)
+        
+        # Check if error is related to JPEG decompression
+        if "JPEG signature" in error_text or "Failed to decode" in error_text or "dcmdjpeg" in error_text:
+            print(f"  [WARNING] dcm2niix encountered JPEG decompression error. Attempting to decompress with dcmdjpeg...")
+            
+            # Find all DICOM files in the folder
+            dicom_files = glob.glob(os.path.join(dicom_folder, "*.dcm"))
+            
+            if not dicom_files:
+                raise RuntimeError(f"No DICOM files found in {dicom_folder} to decompress") from e
+            
+            # Decompress each DICOM file using dcmdjpeg
+            for dicom_file in dicom_files:
+                try:
+                    # dcmdjpeg modifies in-place by default
+                    dcmdjpeg_cmd = ["dcmdjpeg", dicom_file, dicom_file]
+                    subprocess.run(dcmdjpeg_cmd, check=True, capture_output=True)
+                    print(f"    ✓ Decompressed: {os.path.basename(dicom_file)}")
+                except subprocess.CalledProcessError:
+                    print(f"    ✗ Failed to decompress {os.path.basename(dicom_file)}")
+            
+            # Retry dcm2niix after decompression
+            print(f"  Retrying dcm2niix after decompression...")
+            try:
+                subprocess.run(cmd, check=True, capture_output=True, text=True)
+                print(f"  ✓ Successfully converted after decompression")
+            except subprocess.CalledProcessError as retry_error:
+                raise RuntimeError(f"dcm2niix failed even after decompression: {retry_error}") from retry_error
+        else:
+            # Re-raise if it's not a JPEG-related error
+            raise
 
 
 def split_4d_nifti_overwrite(nifti_path, patient_images_dir, patient_id, seq_idx):
