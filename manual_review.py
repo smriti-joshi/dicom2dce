@@ -16,6 +16,7 @@ import csv
 import argparse
 import shutil
 from pathlib import Path
+from dicom2dce.pipeline.stage2_filter import FilteringStage
 from dicom2dce.pipeline.stage4_niiconvert import process_patient_json
 from dicom2dce.pipeline.stage5_niivalidate import validate_patient_nifti
 from dicom2dce.pipeline.stage6_report import flatten_validation_result
@@ -91,13 +92,16 @@ class FlaggedCaseProcessor:
                 reader = csv.DictReader(f)
                 for row in reader:
                     status = row.get('dicom_status', '')
+                    nifti_status = row.get('nifti_conversion', '')
                     patient_id = row.get('patient_id', '')
+                    study_date = row.get('study_date', '')  # New column for date-based organization
                     
                     # Flagged if not 'OK' and patient has entries
-                    if status and status == 'FLAGGED' and patient_id:
+                    if status and status != 'OK' and status != 'MANUALLY_RUN' and patient_id:
                         flagged_cases.append({
                             # DICOM extraction and filtering
                             'patient_id': patient_id,
+                            'study_date': study_date,
                             'dicom_status': status,
                             'entry_count': row.get('entry_count', ''),
                             'dicom_flags': row.get('dicom_flags', ''),
@@ -169,7 +173,7 @@ class FlaggedCaseProcessor:
         else:
             return str(value) if value else ""
     
-    def update_csv_with_results(self, patient_id, validation_result):
+    def update_csv_with_results(self, patient_id, study_date, validation_result):
         """Update CSV with manually processed results."""
         csv_path = self.find_csv_report()
         
@@ -185,10 +189,14 @@ class FlaggedCaseProcessor:
                 for row in reader:
                     rows.append(row)
             
-            # Find and update the patient's row
+            # Find and update the patient's row (match both patient_id and study_date if provided)
             updated = False
             for row in rows:
                 if row.get('patient_id') == patient_id:
+                    # For multi-date cases, also match study_date
+                    if study_date and row.get('study_date') != study_date:
+                        continue
+                    
                     # Update status and validation results
                     row['dicom_status'] = 'MANUALLY_RUN'
                     row['nifti_conversion'] = 'SUCCESS'
@@ -223,7 +231,7 @@ class FlaggedCaseProcessor:
             print(f"  ⚠️  Error updating CSV: {e}")
             return False
     
-    def update_patient_csv_with_results(self, patient_id, validation_result):
+    def update_patient_csv_with_results(self, patient_id, study_date=None, validation_result=None):
         """Update individual per-patient CSV with manually processed results."""
         safe_patient_id = str(patient_id).replace("/", "_").replace("\\", "_")
         patient_csv_path = os.path.join(self.per_patient_csv_dir, f"{safe_patient_id}_results.csv")
@@ -240,23 +248,27 @@ class FlaggedCaseProcessor:
                 for row in reader:
                     rows.append(row)
             
-            # Update all rows for this patient (should just be one, but handle multiple)
+            # Update rows for this patient (match both patient_id and study_date if provided)
             updated_count = 0
             for row in rows:
                 if row.get('patient_id') == patient_id:
+                    # For multi-date cases, also match study_date
+                    if study_date and row.get('study_date') != study_date:
+                        continue
+                    
                     # Update status and validation results
                     row['dicom_status'] = 'MANUALLY_RUN'
                     row['nifti_conversion'] = 'SUCCESS'
-                    row['nifti_overall_status'] = validation_result.get('overall_status', '')
-                    
-                    # Add flattened validation results
-                    flattened = flatten_validation_result(validation_result)
-                    row.update(flattened)
+                    if validation_result:
+                        row['nifti_overall_status'] = validation_result.get('overall_status', '')
+                        # Add flattened validation results
+                        flattened = flatten_validation_result(validation_result)
+                        row.update(flattened)
                     
                     updated_count += 1
             
             if updated_count == 0:
-                print(f"  ⚠️  Could not find patient {patient_id} in per-patient CSV")
+                print(f"  ⚠️  Could not find patient {patient_id}" + (f" ({study_date})" if study_date else "") + " in per-patient CSV")
                 return False
             
             # Write back to CSV
@@ -270,7 +282,7 @@ class FlaggedCaseProcessor:
                 writer.writeheader()
                 writer.writerows(rows)
             
-            print(f"  ✓ Updated per-patient CSV for {patient_id}")
+            print(f"  ✓ Updated per-patient CSV for {patient_id}" + (f" ({study_date})" if study_date else ""))
             return True
             
         except Exception as e:
@@ -281,6 +293,8 @@ class FlaggedCaseProcessor:
         """Display detailed information for a flagged case."""
         print(f"\n{'='*70}")
         print(f"  PATIENT: {case['patient_id']}")
+        if case.get('study_date'):
+            print(f"  STUDY DATE: {case['study_date']}")
         print('='*70)
         
         # DICOM Extraction & Filtering Section
@@ -413,8 +427,34 @@ class FlaggedCaseProcessor:
         
         print('='*70)
     
-    def load_filtered_json(self, patient_id):
-        """Load the filtered JSON for a patient."""
+    def load_filtered_json(self, patient_id, study_date=None):
+        """Load the filtered JSON for a patient, optionally filtered by study_date."""
+        # Try date-specific directory first if study_date is provided
+        if study_date:
+            json_path = os.path.join(
+                self.filtered_json_dir, patient_id, study_date, f"{patient_id}_filtered.json"
+            )
+            if os.path.exists(json_path):
+                try:
+                    with open(json_path, 'r') as f:
+                        return json.load(f)
+                except Exception as e:
+                    print(f"✗ Error loading JSON for {patient_id} ({study_date}): {e}")
+                    return None
+            
+            # Fall back to old format (date/patient_id.json) for backward compatibility
+            json_path_old = os.path.join(
+                self.filtered_json_dir, study_date, f"{patient_id}_filtered.json"
+            )
+            if os.path.exists(json_path_old):
+                try:
+                    with open(json_path_old, 'r') as f:
+                        return json.load(f)
+                except Exception as e:
+                    print(f"✗ Error loading JSON for {patient_id} ({study_date}): {e}")
+                    return None
+        
+        # Fall back to root filtered_json_dir (no date)
         json_path = os.path.join(
             self.filtered_json_dir, f"{patient_id}_filtered.json"
         )
@@ -429,6 +469,25 @@ class FlaggedCaseProcessor:
             print(f"✗ Error loading JSON for {patient_id}: {e}")
             return None
     
+    def _filter_data_by_date(self, data, patient_id, study_date):
+        """Return a copy of data with only entries matching study_date."""
+        if not data or not study_date or patient_id not in data:
+            return data
+
+        groups_or_entries = data[patient_id]
+        if isinstance(groups_or_entries, dict):
+            all_entries = [
+                entry for group_entries in groups_or_entries.values()
+                for entry in group_entries
+            ]
+        elif isinstance(groups_or_entries, list):
+            all_entries = groups_or_entries
+        else:
+            return data
+
+        filtered = [e for e in all_entries if FilteringStage.get_date_key(e) == study_date]
+        return {patient_id: filtered}
+
     def _load_all_dicom_files(self, patient_id):
         """Load all unfiltered DICOM files for a patient as fallback."""
         all_dicom_dir = os.path.join(
@@ -483,6 +542,16 @@ class FlaggedCaseProcessor:
         if not all_entries:
             print(f"✗ No sequences found for {patient_id}")
             return []
+
+        # Sort by StudyDate → SeriesNumber → AcquisitionNumber → DicomPath
+        def _sort_key(e):
+            return (
+                e.get('StudyDate') or e.get('SeriesDate') or e.get('AcquisitionDate') or '',
+                int(e['SeriesNumber']) if str(e.get('SeriesNumber', '')).isdigit() else 0,
+                int(e['AcquisitionNumber']) if str(e.get('AcquisitionNumber', '')).isdigit() else 0,
+                e.get('DicomPath') or e.get('dicom_file') or '',
+            )
+        all_entries = sorted(all_entries, key=_sort_key)
         
         # Find common prefix of all DicomPaths to identify where they first differ
         dicom_paths = [entry.get('DicomPath', entry.get('dicom_file', '')) for entry in all_entries]
@@ -506,6 +575,10 @@ class FlaggedCaseProcessor:
             
             # Show parameters if available
             params = []
+
+            study_date_val = entry.get('StudyDate', '')
+            if study_date_val:
+                params.append(f"Date={study_date_val}")
             if 'ImageType' in entry and entry['ImageType']:
                 params.append(f"Type={entry['ImageType']}")
             if 'RepetitionTime' in entry and entry['RepetitionTime']:
@@ -618,13 +691,14 @@ class FlaggedCaseProcessor:
                 print(f"✗ Invalid input. Please enter space-separated numbers.")
                 continue
     
-    def process_patient(self, patient_id, selected_entries):
+    def process_patient(self, patient_id, selected_entries, study_date=None):
         """
         Process selected entries for a patient.
         
         Args:
             patient_id: Patient ID
             selected_entries: List of selected entry dictionaries
+            study_date: (Optional) Study date for date-based organization
         
         Returns:
             Boolean indicating success
@@ -633,9 +707,13 @@ class FlaggedCaseProcessor:
             print(f"  ⊘ No sequences selected. Skipping {patient_id}.")
             return False
         
-        # Check if already processed
-        patient_nifti_dir = os.path.join(self.nifti_images_root, patient_id)
-        patient_metadata_dir = os.path.join(self.nifti_metadata_root, patient_id)
+        # Check if already processed - account for date-based structure
+        if study_date:
+            patient_nifti_dir = os.path.join(self.nifti_images_root, patient_id, study_date)
+            patient_metadata_dir = os.path.join(self.nifti_metadata_root, patient_id, study_date)
+        else:
+            patient_nifti_dir = os.path.join(self.nifti_images_root, patient_id)
+            patient_metadata_dir = os.path.join(self.nifti_metadata_root, patient_id)
         if os.path.exists(patient_nifti_dir):
             response = input(f"  ⚠️  {patient_id} already has NIfTI images. Overwrite? (y/n): ").strip().lower()
             if response != 'y':
@@ -679,14 +757,15 @@ class FlaggedCaseProcessor:
                 temp_json_path,
                 self.nifti_images_root,
                 self.nifti_metadata_root,
-                interactive=False
+                interactive=False,
+                patient_id=patient_id,
+                study_date=study_date
             )
             
             print(f"  ✅ Successfully converted {patient_id}")
             
             # Run NIfTI validation
             print(f"  🔍 Running NIfTI validation checks...")
-            patient_nifti_dir = os.path.join(self.nifti_images_root, patient_id)
             validation_result = None
             
             try:
@@ -701,8 +780,8 @@ class FlaggedCaseProcessor:
                 
                 # Update CSV with results
                 if validation_result:
-                    self.update_csv_with_results(patient_id, validation_result)
-                    self.update_patient_csv_with_results(patient_id, validation_result)
+                    self.update_csv_with_results(patient_id, study_date, validation_result)
+                    self.update_patient_csv_with_results(patient_id, study_date, validation_result)
                 
             except Exception as val_e:
                 print(f"  ⚠️  Validation error: {val_e}")
@@ -815,35 +894,53 @@ class FlaggedCaseProcessor:
                 continue
             
             # Load and display sequences
-            filtered_data = self.load_filtered_json(patient_id)
+            filtered_data = self.load_filtered_json(patient_id, case.get('study_date'))
             show_all = False
             
+            study_date = case.get('study_date')
+
             # If filtered data is empty, try loading all_dicom_files as fallback
             if not filtered_data:
                 print(f"  ⚠️  No filtered DICOM data found. Loading all available sequences...")
-                filtered_data = self._load_all_dicom_files(patient_id)
-                if filtered_data:
-                    print(f"  ℹ️  Showing ALL available DICOM sequences instead of filtered ones.")
+                raw_data = self._load_all_dicom_files(patient_id)
+                if raw_data:
+                    if study_date:
+                        filtered_data = self._filter_data_by_date(raw_data, patient_id, study_date)
+                        if not filtered_data or not filtered_data.get(patient_id):
+                            print(f"  ⚠️  No sequences found for study date {study_date}. Showing all dates.")
+                            filtered_data = raw_data
+                        else:
+                            print(f"  ℹ️  Showing sequences for study date {study_date}.")
+                    else:
+                        filtered_data = raw_data
+                        print(f"  ℹ️  Showing ALL available DICOM sequences instead of filtered ones.")
                     show_all = True
-            
+
             if not filtered_data:
                 skipped_count += 1
                 continue
-            
+
             # Display filtered sequences
             all_entries = self.display_sequences(filtered_data, patient_id)
             if not all_entries:
                 skipped_count += 1
                 continue
-            
+
             # Ask if user wants to see all sequences instead
             if not show_all:
                 see_all = input(f"\n  Would you like to see ALL available DICOM sequences instead? (y/n): ").strip().lower()
                 if see_all == 'y':
-                    all_dicom_data = self._load_all_dicom_files(patient_id)
-                    if all_dicom_data:
-                        print(f"\n  ℹ️  Showing ALL available DICOM sequences:")
-                        all_entries = self.display_sequences(all_dicom_data, patient_id)
+                    raw_all_data = self._load_all_dicom_files(patient_id)
+                    if raw_all_data:
+                        # Still filter by date when a study_date is set
+                        if study_date:
+                            date_filtered = self._filter_data_by_date(raw_all_data, patient_id, study_date)
+                            display_data = date_filtered if (date_filtered and date_filtered.get(patient_id)) else raw_all_data
+                            print(f"\n  ℹ️  Showing ALL sequences for study date {study_date}:" if display_data is date_filtered else f"\n  ℹ️  Showing ALL sequences (no date filter applied):")
+                        else:
+                            display_data = raw_all_data
+                            print(f"\n  ℹ️  Showing ALL available DICOM sequences:")
+                        all_entries = self.display_sequences(display_data, patient_id)
                         if not all_entries:
                             skipped_count += 1
                             continue
@@ -854,7 +951,7 @@ class FlaggedCaseProcessor:
             selected_entries = self.get_user_sequence_selection(all_entries)
             
             # Process selected sequences
-            if self.process_patient(patient_id, selected_entries):
+            if self.process_patient(patient_id, selected_entries, case.get('study_date')):
                 processed_count += 1
             else:
                 skipped_count += 1

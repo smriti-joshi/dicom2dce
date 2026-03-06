@@ -93,6 +93,7 @@ def flatten_validation_result(validation_result):
 CSV_FIELDNAMES = [
     # DICOM extraction and filtering
     "patient_id",
+    "study_date",
     "dicom_status",
     "entry_count",
     "dicom_flags",
@@ -176,10 +177,18 @@ def print_summary(csv_results, nifti_stats, validation_stats):
     print(f"\n{'='*70}")
     print("  SUMMARY")
     print('='*70)
-    print(f"  Total patients: {len(csv_results)}")
+    unique_patients = len({r["patient_id"] for r in csv_results})
+    print(f"  Total patients: {unique_patients}")
     print(f"  DICOM status:")
-    dicom_ok = sum(1 for r in csv_results if r["dicom_status"] == "OK")
-    dicom_flagged = len(csv_results) - dicom_ok
+    # Count per unique patient (take worst status if multi-date)
+    patient_dicom_statuses = {}
+    for r in csv_results:
+        pid = r["patient_id"]
+        status = r["dicom_status"]
+        if pid not in patient_dicom_statuses or status != "OK":
+            patient_dicom_statuses[pid] = status
+    dicom_ok = sum(1 for s in patient_dicom_statuses.values() if s == "OK")
+    dicom_flagged = unique_patients - dicom_ok
     print(f"    ✓ OK: {dicom_ok}")
     print(f"    ⚠ Flagged: {dicom_flagged}")
     print(f"  NIfTI conversion:")

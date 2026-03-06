@@ -2,7 +2,7 @@
 
 A DICOM processing pipeline to take you from messy DICOM folders to consistent DCE-MRI NIfTI sequences. Currently, the pipeline focuses on processing Breast DCE-MRI data. There are two components: an **Automatic Pipeline** to process the data, followed by an **Interactive Manual Review** for flagged cases.
 
-Note: In this current version, it assumes that there is only one timepoint (series corresponding to one Study Date) per patient. Working on integrating multiple timepoints!
+The pipeline fully supports patients with **multiple acquisition dates** (study timepoints). Each date is processed independently and produces its own NIfTI output directory and CSV row.
 ## 📤 Output
 
 ### Directory Structure
@@ -12,29 +12,36 @@ Results are organized per center:
 results/
 └── center_name/
    ├── dce/
-   │   ├── images/                          # Final NIfTI volumes
+   │   ├── images/                               # Final NIfTI volumes
    │   │   └── PATIENT_ID/
-   │   │       ├── PATIENT_ID_0000.nii.gz   # Pre-contrast baseline
-   │   │       ├── PATIENT_ID_0001.nii.gz   # 1st post-contrast phase
-   │   │       ├── PATIENT_ID_0002.nii.gz   # 2nd post-contrast phase
-   │   │       └── ...
-   │   └── dicom_metadata/                  # dcm2niix JSON sidecars
+   │   │       └── YYYYMMDD/                     # Study date subfolder
+   │   │           ├── PATIENT_ID_0000.nii.gz    # Pre-contrast baseline
+   │   │           ├── PATIENT_ID_0001.nii.gz    # 1st post-contrast phase
+   │   │           ├── PATIENT_ID_0002.nii.gz    # 2nd post-contrast phase
+   │   │           └── ...
+   │   └── dicom_metadata/                       # dcm2niix JSON sidecars
    │       └── PATIENT_ID/
-   │           ├── PATIENT_ID_0000.json
-   │           ├── PATIENT_ID_0001.json
-   │           ├── ...
-   │           └── PATIENT_ID_nifti_dicom_mapping.json
+   │           └── YYYYMMDD/                     # Study date subfolder
+   │               ├── PATIENT_ID_0000.json
+   │               ├── PATIENT_ID_0001.json
+   │               ├── ...
+   │               └── PATIENT_ID_nifti_dicom_mapping.json
    └── intermediate_results/
-   |    ├── all_dicom_files/                 # Stage 1: raw extraction JSONs
-   |    ├── filtered_dicom_files/            # Stage 2: filtered sequence JSONs
-   |    ├── per_patient_validation_csvs/     # Per-patient validation CSVs
-   ├── processing_report_center.csv          # Center-level processing report
-   └── nifti_validation_details_center.json  # Full validation details
+        ├── all_dicom_files/                      # Stage 1: raw extraction JSONs
+        ├── filtered_dicom_files/                 # Stage 2: filtered sequence JSONs
+        │   └── PATIENT_ID/
+        │       └── YYYYMMDD/
+        │           └── PATIENT_ID_filtered.json
+        ├── per_patient_validation_csvs/          # Per-patient validation CSVs
+        ├── processing_report_center.csv          # Center-level processing report
+        └── nifti_validation_details_center.json  # Full validation details
 ```
+
+Patients with a single study date follow the same structure — the `YYYYMMDD/` subfolder is always present.
 
 ### NIfTI Files
 
-Each patient gets one sub-folder under `dce/images/`. Volumes are 3D NIfTI files (`.nii.gz`) named sequentially:
+Each patient/date combination gets its own subfolder under `dce/images/PATIENT_ID/YYYYMMDD/`. Volumes are 3D NIfTI files (`.nii.gz`) named sequentially:
 ```
 PATIENT_ID_0000.nii.gz   # index 0000 = first temporal position (pre-contrast)
 PATIENT_ID_0001.nii.gz   # index 0001 = second temporal position
@@ -45,7 +52,7 @@ If dcm2niix produces a 4D volume (e.g. a multi-phase baseline), it is automatica
 
 ### JSON Metadata
 
-For each NIfTI file, a matching JSON sidecar is saved under `dce/dicom_metadata/`. These are produced by dcm2niix and contain DICOM-derived metadata.
+For each NIfTI file, a matching JSON sidecar is saved under `dce/dicom_metadata/PATIENT_ID/YYYYMMDD/`. These are produced by dcm2niix and contain DICOM-derived metadata.
 
 Additionally, a `PATIENT_ID_nifti_dicom_mapping.json` file maps each NIfTI to its source DICOM folder:
 ```json
@@ -60,18 +67,21 @@ Additionally, a `PATIENT_ID_nifti_dicom_mapping.json` file maps each NIfTI to it
 
 ### CSV Reports
 
-**Center-level report** (`processing_report_center.csv`) : one row per patient with 22 columns covering:
+**Center-level report** (`processing_report_center.csv`) : one row per patient **per study date**, with columns covering:
 
 | Group | Columns |
-|-------|---------|
-| DICOM extraction | `patient_id`, `dicom_status`, `entry_count`, `dicom_flags` |
+|-------|--------|
+| Identification | `patient_id`, `study_date` |
+| DICOM extraction | `dicom_status`, `entry_count`, `dicom_flags` |
 | Consistency checks | `consistency_temporal_positions`, `consistency_total_dicoms`, `consistency_folder_names`, `consistency_slices_per_temporal`, `consistency_folder_slice_counts`, `consistency_low_similarity_pairs` |
 | NIfTI conversion | `nifti_conversion` |
 | NIfTI validation | `nifti_overall_status`, `val_consistency_status`, `val_consistency_issues`, `val_file_count`, `val_temporal_status`, `val_temporal_issues`, `val_time_gaps`, `val_signal_status`, `val_signal_issues`, `val_enhancement_ratio`, `val_peak_index` |
 
-**Per-patient CSVs** (`per_patient_validation_csvs/PATIENT_ID_results.csv`) : same schema, one row per run (allows tracking re-processing).
+Patients with multiple study dates have one row per date, each with its own `study_date` value and independent validation results.
 
-**Validation details JSON** (`nifti_validation_details_center.json`) : detailed and nested nifti validation results for every patient.
+**Per-patient CSVs** (`per_patient_validation_csvs/PATIENT_ID_results.csv`) : same schema, one row per (patient, study_date) run — allows tracking re-processing.
+
+**Validation details JSON** (`nifti_validation_details_center.json`) : detailed and nested nifti validation results for every patient/date combination.
 
 ## 💾 Installation
 
@@ -146,59 +156,64 @@ dicom2dce-review --results-dir /path/to/results
 
 The automatic processing pipeline consists of six stages:
 
+Stages 2–6 are run independently for each study date found in the patient's DICOMs.
+
 **Stage 1: 📥 Extraction**
 - Reads DICOM files from patient directories
-- Extracts metadata (sequence information, timing, acquisition parameters)
+- Extracts metadata including all date fields: StudyDate, SeriesDate, AcquisitionDate, ContentDate, StudyInstanceUID, StudyID
 - Organizes metadata into a structured format for downstream processing
 
-**Stage 2: 🔍 Filtering**
+**Stage 2: 🔍 Filtering & Date Grouping**
 - Identifies and selects DCE MRI sequences from all extracted sequences
-- Filters based on imaging parameters and sequence names
+- Groups entries by study date using a 6-tier fallback chain:
+  StudyDate → SeriesDate → AcquisitionDate → ContentDate → StudyInstanceUID → StudyID → `UNKNOWN_DATE`
+- Filtered results saved to `filtered_dicom_files/PATIENT_ID/YYYYMMDD/`
 
 **Stage 3: ✅ Consistency Checks**
-- Validates consistency of extracted DICOM sequences
-- Checks temporal ordering of dynamic frames
-- Detects and reports issues like mismatched slice counts or temporal gaps
-- Flags patients with data quality issues
+- Run independently for each study date
+- Validates consistency of filtered DICOM sequences for that date
+- If no DCE sequences survived filtering for a date, raises `EMPTY_FILTERED_ENTRIES`
+- Flags dates with data quality issues (blocking) or warnings (non-blocking)
 
 **Stage 4: 🔁 NIfTI Conversion**
+- Only runs for dates where consistency check passed (`OK`)
 - Converts DICOM sequences to NIfTI format using dcm2niix
+- Output saved to `dce/images/PATIENT_ID/YYYYMMDD/`
 - Automatically handles 4D volume splitting when needed
-- Files are named and organized sequentially for tracking
 
 **Stage 5: 🧪 NIfTI Validation**
-- Performs quality checks on converted NIfTI files
+- Run independently for each study date after conversion
 - Validates consistency (file integrity, dimension matching)
 - Checks temporal ordering and signal progression
 - Calculates enhancement metrics and peak indices
 
 **Stage 6: 📊 Reporting**
 - Saves per-patient and center-level results
-- Generates CSV reports with processing and validation results
+- Generates one CSV row per (patient, study date)
 - Exports detailed validation metrics as JSON
 
 ## 🎯 Manual Review
 
 For cases `FLAGGED` during automated processing (due to consistency check failures or other issues), the manual review tool allows you to:
-- Review flagged cases with detailed error information
+- Review flagged cases with detailed error information, including the study date
 - Select specific sequences manually for problematic patients
-- Convert selected sequences to NIfTI
+- Convert selected sequences to NIfTI into the correct `PATIENT_ID/YYYYMMDD/` directory
 - Run validation on the converted data
-- Automatically update CSV reports with results
+- Update both the main center CSV and the per-patient CSV (matched on `patient_id` + `study_date`)
 
 ### Manual Review Workflow
 
-1. **Load Flagged Cases** : automatically loads all patients with status != 'OK' from the processing CSV
+1. **Load Flagged Cases** : automatically loads all patients with status != 'OK' from the processing CSV, including their `study_date`
 2. **Review Case Details** : shows:
+   - Patient ID and Study Date
    - DICOM extraction summary (sequences found, parameters)
    - Consistency check details (what failed and why)
    - NIfTI conversion status
    - Validation results (if previously converted)
-   - Summary of issues
 
 3. **Select Sequences** : view all detected sequences with parameters:
    ```
-   Sequences for patient PATIENT_ID:
+   Sequences for patient PATIENT_ID (Study Date: YYYYMMDD):
    [0] /path/to/dicom_folder_1 (TR=4.2ms, TE=2.1ms, FA=12°)
    [1] /path/to/dicom_folder_2 (TR=4.2ms, TE=2.1ms, FA=12°)
    [2] /path/to/dicom_folder_3 (TR=100ms, TE=50ms, FA=90°)
@@ -206,13 +221,14 @@ For cases `FLAGGED` during automated processing (due to consistency check failur
    Enter space-separated indices: `0 1`
 
 4. **Automatic Processing** : selected sequences are:
-   - Converted from DICOM to NIfTI using dcm2niix
+   - Converted from DICOM to NIfTI using dcm2niix into `PATIENT_ID/YYYYMMDD/`
    - Validated automatically (signal integrity, temporal ordering, enhancement)
    - Results summarized in console output
 
 5. **CSV Updates** : both main and per-patient CSVs are updated with:
    - Status: `MANUALLY_RUN`
    - All NIfTI validation fields
+   - Matching done on both `patient_id` and `study_date`
 
 ## 📁 Project Structure
 
@@ -221,12 +237,12 @@ For cases `FLAGGED` during automated processing (due to consistency check failur
 - `process_dicom.py` : pipeline orchestrator
 - `pipeline/` : processing stages:
   - `config.py` : configuration management
-  - `stage1_extractor.py` : DICOM metadata extraction
-  - `stage2_filter.py` : DCE sequence filtering
-  - `stage3_dcmconsistency.py` : consistency checks
-  - `stage4_niiconvert.py` : NIfTI conversion (dcm2niix)
-  - `stage5_niivalidate.py` : NIfTI quality validation
-  - `stage6_report.py` : CSV/JSON reporting
+  - `stage1_extractor.py` : DICOM metadata extraction (all date fields)
+  - `stage2_filter.py` : DCE sequence filtering and date grouping (`get_date_key()`, `group_by_date_and_tr_te()`)
+  - `stage3_dcmconsistency.py` : consistency checks per study date
+  - `stage4_niiconvert.py` : NIfTI conversion into date-based directories
+  - `stage5_niivalidate.py` : NIfTI quality validation per study date
+  - `stage6_report.py` : CSV/JSON reporting with one row per (patient, date)
 - `config_paths.yaml.example` : template for path configuration
 - `config_params.json` : processing parameters (filtering, validation thresholds)
 

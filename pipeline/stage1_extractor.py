@@ -59,7 +59,13 @@ class DicomMetadataExtractor:
                 "NumberOfTemporalPositions": get_value("NumberOfTemporalPositions"),
                 "ContrastBolusAgent": get_value("ContrastBolusAgent"),
                 "ContrastBolusVolume": get_value("ContrastBolusVolume"),
-                "ContrastBolusStartTime": get_value("ContrastBolusStartTime")
+                "ContrastBolusStartTime": get_value("ContrastBolusStartTime"),
+                "StudyDate": get_value("StudyDate"),
+                "SeriesDate": get_value("SeriesDate"),
+                "AcquisitionDate": get_value("AcquisitionDate"),
+                "ContentDate": get_value("ContentDate"),
+                "StudyInstanceUID": get_value("StudyInstanceUID"),
+                "StudyID": get_value("StudyID")
             }
         except Exception as e:
             print(f"Error reading {dcm_path}: {e}")
