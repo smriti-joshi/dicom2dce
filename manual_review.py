@@ -967,10 +967,11 @@ class FlaggedCaseProcessor:
         print(f"  PROCESSING SUMMARY")
         print('='*70)
         total = len(flagged_cases)
-        success_pct = (processed_count / total * 100) if total > 0 else 0
+        total_skipped = total - processed_count
+        pct = lambda n: (n / total * 100) if total > 0 else 0
         print(f"  Total flagged cases: {total}")
-        print(f"  ✓ Processed: {processed_count} ({success_pct:.1f}%)")
-        print(f"  ⊘ Skipped: {skipped_count} ({(skipped_count/total*100 if total > 0 else 0):.1f}%)")
+        print(f"  ✓ Processed: {processed_count:3d} ({pct(processed_count):.1f}%)")
+        print(f"  ⊘ Skipped:   {total_skipped:3d} ({pct(total_skipped):.1f}%)")
         print('='*70)
 
 
