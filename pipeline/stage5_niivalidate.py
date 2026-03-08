@@ -56,6 +56,10 @@ def load_patient_niftis(patient_images_dir, patient_id):
         - nifti_files: List of sorted filenames
         - images_dict: Dict mapping filename to nibabel image object
     """
+    # Check if directory exists
+    if not os.path.exists(patient_images_dir):
+        return [], {}
+    
     nifti_files = sorted([f for f in os.listdir(patient_images_dir) 
                           if f.endswith('.nii.gz') and f.startswith(patient_id)])
     

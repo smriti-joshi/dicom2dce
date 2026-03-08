@@ -350,7 +350,7 @@ def _handle_trigger_times_at_patient_level(patient_id, patient_images_dir, seq_i
 
 
 
-def process_patient_json(json_path, images_root, metadata_root, interactive=False):
+def process_patient_json(json_path, images_root, metadata_root, interactive=False, patient_id=None, study_date=None):
     """
     Process a single patient's filtered DICOM JSON file and convert to NIfTI.
     
@@ -359,18 +359,32 @@ def process_patient_json(json_path, images_root, metadata_root, interactive=Fals
         images_root: Root directory where NIfTI images will be saved
         metadata_root: Root directory where metadata will be saved
         interactive: If True, prompt user to select sequences (not used for flat entries)
+        patient_id: (Optional) Explicit patient ID. If provided with study_date, organizes output as patient_id/study_date/
+        study_date: (Optional) Study date string (YYYYMMDD format). If provided, organizes output with date subdirectory
     """
     with open(json_path, "r") as f:
         data = json.load(f)
     
-    patient_id = list(data.keys())[0]
-    entries = data[patient_id]  # Flat list of entries
+    json_patient_id = list(data.keys())[0]
+    entries = data[json_patient_id]  # Flat list of entries
     
-    patient_images_dir = os.path.join(images_root, patient_id)
-    patient_metadata_dir = os.path.join(metadata_root, patient_id)
+    # Use provided patient_id or fall back to JSON patient_id
+    if patient_id is None:
+        patient_id = json_patient_id
+    
+    # Construct image and metadata directories based on whether date is provided
+    if study_date:
+        # Date-based organization: root/patient_id/study_date/
+        patient_images_dir = os.path.join(images_root, patient_id, study_date)
+        patient_metadata_dir = os.path.join(metadata_root, patient_id, study_date)
+    else:
+        # Original organization: root/patient_id/
+        patient_images_dir = os.path.join(images_root, patient_id)
+        patient_metadata_dir = os.path.join(metadata_root, patient_id)
 
     if os.path.exists(patient_images_dir):
-        print(f"Patient {patient_id} already processed. Skipping.")
+        date_suffix = f" (Study Date: {study_date})" if study_date else ""
+        print(f"Patient {patient_id}{date_suffix} already processed. Skipping.")
         return
 
     # Create output directories

@@ -233,11 +233,59 @@ class FilteringStage:
         return filtered
     
     @staticmethod
-    def group_by_tr_te(filtered_entries):
-        """Group filtered entries by (TR, TE) pairs, flag inconsistencies, and flatten"""
-        grouped = {}
+    def get_date_key(entry):
+        """Extract the date key from a metadata entry using the standard fallback chain."""
+        for field in ("StudyDate", "SeriesDate", "AcquisitionDate", "ContentDate", "StudyInstanceUID", "StudyID"):
+            val = entry.get(field, "None")
+            if val != "None" and val:
+                return val
+        return "UNKNOWN_DATE"
+
+    @staticmethod
+    def group_by_date_and_tr_te(filtered_entries):
+        """
+        Group filtered entries by StudyDate first, then by (TR, TE) pairs.
+        Returns a dictionary: {date_string: [flat_entries_for_that_date]}
+        
+        For each date, entries are organized by TR/TE groups and flagged appropriately,
+        but returned as a flat list per date while preserving the StudyDate.
+        
+        Fallback order for date:
+        1. StudyDate (0008,0020)
+        2. SeriesDate (0008,0021)
+        3. AcquisitionDate (0008,0022)
+        4. ContentDate (0008,0023)
+        5. StudyInstanceUID (0020,000D)
+        6. StudyID (0020,0010)
+        7. UNKNOWN_DATE
+        """
+        # First, separate entries by date key
+        entries_by_date = {}
         
         for entry in filtered_entries:
+            date_key = FilteringStage.get_date_key(entry)
+            if date_key not in entries_by_date:
+                entries_by_date[date_key] = []
+            entries_by_date[date_key].append(entry)
+        
+        # Process each date group with TR/TE grouping
+        result_by_date = {}
+        
+        for date_str in sorted(entries_by_date.keys()):
+            entries_for_date = entries_by_date[date_str]
+            # Apply TR/TE grouping to this date's entries
+            grouped_by_tr_te = FilteringStage._group_by_tr_te_impl(entries_for_date)
+            # Flatten the result for this date
+            result_by_date[date_str] = grouped_by_tr_te
+        
+        return result_by_date
+    
+    @staticmethod
+    def _group_by_tr_te_impl(entries):
+        """Internal implementation of TR/TE grouping. Returns flat list of entries with processing."""
+        grouped = {}
+        
+        for entry in entries:
             tr = entry.get("RepetitionTime")
             te = entry.get("EchoTime")
             key = f"TR_{tr}_TE_{te}"
@@ -328,6 +376,15 @@ class FilteringStage:
             return filtered_entries_result
         else:
             return flagged_entries
+    
+    @staticmethod
+    def group_by_tr_te(filtered_entries):
+        """
+        Legacy function for backward compatibility.
+        Groups by TR/TE only (no date grouping).
+        Returns a flat list of entries.
+        """
+        return FilteringStage._group_by_tr_te_impl(filtered_entries)
     
     def sort_entries(self, entries):
         """
@@ -449,7 +506,7 @@ class FilteringStage:
             # No valid timing entries, return None entries as-is
             return none_entries
     
-    def save_filtered_results(self, flat_entries, patient_id, out_dir, metadata=None, flags=None):
+    def save_filtered_results(self, flat_entries, patient_id, out_dir, metadata=None, flags=None, study_date=None):
         """Save flat list of filtered entries to JSON file
         
         Note: Entries are saved as-is without sorting. 
@@ -464,7 +521,8 @@ class FilteringStage:
                 series_descriptions = [entry.get("SeriesDescription", "Unknown") for entry in metadata]
             print("======================================================================================")
             desc_str = "\n".join(series_descriptions) if series_descriptions else "No metadata available"
-            print(f"⚠️  No DCE files found for patient {patient_id} - manual inspection needed")
+            date_info = f" (Study Date: {study_date})" if study_date else ""
+            print(f"⚠️  No DCE files found for patient {patient_id}{date_info} - manual inspection needed")
             print(f"   Available series:\n {desc_str}")
             return []
         
