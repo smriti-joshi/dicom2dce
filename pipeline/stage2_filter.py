@@ -449,12 +449,37 @@ class FilteringStage:
                 none_entries.append(entry)
         
         # Sort valid timing entries by hierarchical key
+        def parse_acquisition_time(acq_time_str):
+            """Parse AcquisitionTime (HHMMSS.ffffff) to seconds since midnight"""
+            if acq_time_str is None or acq_time_str == "None":
+                return float('inf')
+            try:
+                # Handle both string and numeric formats
+                acq_time_str = str(acq_time_str).strip()
+                if '.' in acq_time_str:
+                    time_part = acq_time_str.split('.')[0]
+                else:
+                    time_part = acq_time_str
+                
+                if len(time_part) >= 6:
+                    hours = int(time_part[0:2])
+                    minutes = int(time_part[2:4])
+                    seconds = int(time_part[4:6])
+                    total_seconds = hours * 3600 + minutes * 60 + seconds
+                    return total_seconds
+            except (ValueError, TypeError, IndexError):
+                pass
+            return float('inf')
+        
         def sort_key(entry):
-            acq_time = get_numeric_value(entry, "AcquisitionNumber")
+            acq_num = get_numeric_value(entry, "AcquisitionNumber")
             temp_pos = get_numeric_value(entry, "TemporalPositionIdentifier", is_int=True)
             trigger_time = get_numeric_value(entry, "TriggerTime")
             frame_ref_time = get_numeric_value(entry, "FrameReferenceTime")
-            return (acq_time, temp_pos, trigger_time, frame_ref_time)
+            acq_time_seconds = parse_acquisition_time(entry.get("AcquisitionTime"))
+            
+            # Use AcquisitionTime as fallback when other timing fields are missing
+            return (acq_num, temp_pos, trigger_time, frame_ref_time, acq_time_seconds)
         
         sorted_valid = sorted(valid_timing_entries, key=sort_key)
         
