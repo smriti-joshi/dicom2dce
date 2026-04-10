@@ -406,6 +406,7 @@ class FilteringStage:
         
         def has_any_valid_timing(entry):
             """Check if entry has at least one valid timing field"""
+            
             acq_time = get_numeric_value(entry, "AcquisitionNumber")
             temp_pos = get_numeric_value(entry, "TemporalPositionIdentifier", is_int=True)
             trigger_time = get_numeric_value(entry, "TriggerTime")
@@ -472,14 +473,12 @@ class FilteringStage:
             return float('inf')
         
         def sort_key(entry):
+            acq_time = get_numeric_value(entry, "AcquisitionTime")
             acq_num = get_numeric_value(entry, "AcquisitionNumber")
             temp_pos = get_numeric_value(entry, "TemporalPositionIdentifier", is_int=True)
             trigger_time = get_numeric_value(entry, "TriggerTime")
             frame_ref_time = get_numeric_value(entry, "FrameReferenceTime")
-            acq_time_seconds = parse_acquisition_time(entry.get("AcquisitionTime"))
-            
-            # Use AcquisitionTime as fallback when other timing fields are missing
-            return (acq_num, temp_pos, trigger_time, frame_ref_time, acq_time_seconds)
+            return (acq_time, acq_num, temp_pos, trigger_time, frame_ref_time)
         
         sorted_valid = sorted(valid_timing_entries, key=sort_key)
         
