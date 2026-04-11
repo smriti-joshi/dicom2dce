@@ -5,7 +5,27 @@ import json
 import subprocess
 import glob
 import re
+import shutil
 import nibabel as nib
+
+
+def _find_dcm2niix():
+    """Locate the dcm2niix executable, checking PATH and common fallback locations."""
+    exe = shutil.which("dcm2niix")
+    if exe:
+        return exe
+    fallbacks = [
+        os.path.expanduser("~/.local/bin/dcm2niix"),
+        "/usr/local/bin/dcm2niix",
+        "/usr/bin/dcm2niix",
+    ]
+    for path in fallbacks:
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    raise FileNotFoundError(
+        "dcm2niix not found on PATH or in common locations. "
+        "Install it or add its directory to PATH."
+    )
 
 
 def convert_dicom_to_nifti(dicom_folder, output_path, out_name=None):
@@ -17,7 +37,7 @@ def convert_dicom_to_nifti(dicom_folder, output_path, out_name=None):
     """
     filename_template = out_name if out_name else "%s"
     cmd = [
-        "dcm2niix",
+        _find_dcm2niix(),
         "-z",
         "y",
         "-o",

@@ -13,6 +13,7 @@ dependencies = [
     "numpy",
     "tqdm",
     "pyyaml",
+    "dcm2niix"
 ]
 
 [project.optional-dependencies]
