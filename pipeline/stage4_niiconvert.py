@@ -48,7 +48,16 @@ def convert_dicom_to_nifti(dicom_folder, output_path, out_name=None):
     ]
     
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        # dcm2niix can emit non-UTF8 bytes in stdout/stderr for some datasets.
+        # Decode safely so conversion failures are reported instead of crashing.
+        subprocess.run(
+            cmd,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
     except subprocess.CalledProcessError as e:
         error_text = e.stderr + e.stdout if e.stderr and e.stdout else str(e)
         
@@ -75,7 +84,14 @@ def convert_dicom_to_nifti(dicom_folder, output_path, out_name=None):
             # Retry dcm2niix after decompression
             print(f"  Retrying dcm2niix after decompression...")
             try:
-                subprocess.run(cmd, check=True, capture_output=True, text=True)
+                subprocess.run(
+                    cmd,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                )
                 print(f"  ✓ Successfully converted after decompression")
             except subprocess.CalledProcessError as retry_error:
                 raise RuntimeError(f"dcm2niix failed even after decompression: {retry_error}") from retry_error
