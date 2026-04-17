@@ -242,45 +242,23 @@ class FilteringStage:
         return "UNKNOWN_DATE"
 
     @staticmethod
-    def group_by_date_and_tr_te(filtered_entries):
+    def group_by_date(metadata_list):
         """
-        Group filtered entries by StudyDate first, then by (TR, TE) pairs.
-        Returns a dictionary: {date_string: [flat_entries_for_that_date]}
-        
-        For each date, entries are organized by TR/TE groups and flagged appropriately,
-        but returned as a flat list per date while preserving the StudyDate.
-        
-        Fallback order for date:
-        1. StudyDate (0008,0020)
-        2. SeriesDate (0008,0021)
-        3. AcquisitionDate (0008,0022)
-        4. ContentDate (0008,0023)
-        5. StudyInstanceUID (0020,000D)
-        6. StudyID (0020,0010)
-        7. UNKNOWN_DATE
+        Group raw metadata entries by date only, with no filtering applied.
+        Returns a dictionary: {date_string: [raw_entries_for_that_date]}
+
+        Fallback order for date: StudyDate -> SeriesDate -> AcquisitionDate ->
+        ContentDate -> StudyInstanceUID -> StudyID -> UNKNOWN_DATE
         """
-        # First, separate entries by date key
         entries_by_date = {}
-        
-        for entry in filtered_entries:
+        for entry in metadata_list:
             date_key = FilteringStage.get_date_key(entry)
             if date_key not in entries_by_date:
                 entries_by_date[date_key] = []
             entries_by_date[date_key].append(entry)
-        
-        # Process each date group with TR/TE grouping
-        result_by_date = {}
-        
-        for date_str in sorted(entries_by_date.keys()):
-            entries_for_date = entries_by_date[date_str]
-            # Apply TR/TE grouping to this date's entries
-            grouped_by_tr_te = FilteringStage._group_by_tr_te_impl(entries_for_date)
-            # Flatten the result for this date
-            result_by_date[date_str] = grouped_by_tr_te
-        
-        return result_by_date
+        return entries_by_date
+
     
-    @staticmethod
     def _group_by_tr_te_impl(entries):
         """Internal implementation of TR/TE grouping. Returns flat list of entries with processing."""
         grouped = {}

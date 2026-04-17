@@ -119,18 +119,14 @@ class DicomProcessingPipeline:
             if error_log:
                 self.extractor_stage.save_error_log(error_log, patient_id, extract_output_path)
         
-        # Filter
-        filtered = self.filter_stage.filter_dce_sequences(metadata_list)
-        
-        # Group by DATE and TR/TE
-        grouped_by_date = self.filter_stage.group_by_date_and_tr_te(filtered)
-        
-        # If no DCE sequences found at all, still run consistency check to raise the flag.
-        # Use dates from raw metadata as representative; otherwise only process dates that have DCE entries.
-        if grouped_by_date:
-            dates_to_process = set(grouped_by_date.keys())
-        else:
-            dates_to_process = {self.filter_stage.get_date_key(e) for e in metadata_list} or {"UNKNOWN_DATE"}
+        # Group raw metadata by date first, then filter and group by TR/TE per date
+        raw_by_date = self.filter_stage.group_by_date(metadata_list)
+        dates_to_process = set(raw_by_date.keys()) or {"UNKNOWN_DATE"}
+
+        grouped_by_date = {}
+        for date_str, date_entries in raw_by_date.items():
+            filtered_for_date = self.filter_stage.filter_dce_sequences(date_entries)
+            grouped_by_date[date_str] = FilteringStage._group_by_tr_te_impl(filtered_for_date)
         
         # Process each date separately (including dates with no filtered entries)
         entries_by_date = {}
