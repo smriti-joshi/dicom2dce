@@ -23,6 +23,10 @@ def parse_acquisition_time(acq_time, trigger_time=None):
         try:
             # Convert HHMMSS.ffffff to seconds
             time_str = str(acq_time).split('.')[0]
+            # Strip colons from non-standard formats like "09:01:05"
+            time_str = time_str.replace(':', '')
+            # Zero-pad to 6 digits: numeric serialization loses leading zero (90105 -> 090105)
+            time_str = time_str.zfill(6)
             if len(time_str) >= 6:
                 hours = int(time_str[0:2])
                 minutes = int(time_str[2:4])
