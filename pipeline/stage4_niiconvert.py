@@ -208,6 +208,16 @@ def _process_single_sequence(
 
     # Check if the pre-contrast baseline file was created
     if not os.path.exists(final_nii_path):
+        # dcm2niix may have created trigger-time files instead (e.g. patient_0001_t223076.nii.gz).
+        # Advance seq_idx so the caller registers this dicom_folder in seq_idx_to_dicom_folder
+        # and the next entry does not reuse the same index.
+        trigger_files = glob.glob(os.path.join(patient_images_dir, f"{out_basename}_t*.nii.gz"))
+        if trigger_files:
+            print(
+                f"  [WARNING] Expected file not created: {out_basename}.nii.gz, "
+                f"but found {len(trigger_files)} trigger-time file(s). Advancing seq_idx: {seq_idx} -> {seq_idx + 1}"
+            )
+            return seq_idx + 1
         print(f"  [WARNING] Expected file not created: {out_basename}.nii.gz")
         return seq_idx
 
@@ -366,9 +376,11 @@ def _handle_trigger_times_at_patient_level(patient_id, patient_images_dir, seq_i
         
         # Also rename JSON sidecar if it exists
         old_json = old_path.replace('.nii.gz', '.json')
+        new_json = new_path.replace('.nii.gz', '.json')
         if os.path.exists(old_json):
-            new_json = new_path.replace('.nii.gz', '.json')
             os.rename(old_json, new_json)
+        else:
+            print(f"  [WARNING] No JSON sidecar for trigger-time file: {os.path.basename(old_path)}")
         
         # Get dicom_folder from the original seq_idx mapping, or use fallback
         dicom_folder = seq_idx_to_dicom_folder.get(original_seq_idx, fallback_folder)
