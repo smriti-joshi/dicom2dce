@@ -46,6 +46,11 @@ def main():
         patient_dirs = sorted([d for d in os.listdir(center_root_dir)
                                if os.path.isdir(os.path.join(center_root_dir, d))])
 
+        select_ids = Config.get_select_ids()
+        if select_ids:
+            patient_dirs = [d for d in patient_dirs if d in select_ids]
+            print(f"\n  Filtering to {len(patient_dirs)} selected ID(s): {select_ids}")
+
         print(f"\n  Found {len(patient_dirs)} patient(s)")
         print('='*70)
 
@@ -143,6 +148,10 @@ def main():
 
                 if result["nifti_validation"]:
                     validation_details[patient_id] = result["nifti_validation"]
+
+                if idx == 34:
+                    # stop here for testing
+                    break
 
         print(f"\n{'='*70}")
         print("  SAVING RESULTS")

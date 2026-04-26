@@ -192,3 +192,13 @@ class Config:
         if isinstance(results_dir, dict) and "value" in results_dir:
             return results_dir["value"]
         return results_dir
+
+    @classmethod
+    def get_select_ids(cls):
+        """Optional list of patient IDs to process. Empty list means process all."""
+        cls._ensure_loaded()
+        paths = cls._config.get("paths", {})
+        select_ids = paths.get("select_ids", [])
+        if isinstance(select_ids, dict) and "values" in select_ids:
+            return select_ids["values"]
+        return select_ids or []

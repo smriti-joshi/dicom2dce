@@ -16,3 +16,10 @@ paths:
   # Root directory for NIfTI output
   # Output structure: <results_dir>/<center>/dce/images/ and <center>/dce/dicom_metadata/
   results_dir: '/path/to/output'
+
+  # Optional: process only a specific subset of patient IDs.
+  # Leave as an empty list [] to process all patients.
+  select_ids: []
+  # select_ids:
+  #   - 'PATIENT_001'
+  #   - 'PATIENT_002'
