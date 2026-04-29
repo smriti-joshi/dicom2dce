@@ -390,9 +390,10 @@ class FilteringStage:
             temp_pos = get_numeric_value(entry, "TemporalPositionIdentifier", is_int=True)
             trigger_time = get_numeric_value(entry, "TriggerTime")
             frame_ref_time = get_numeric_value(entry, "FrameReferenceTime")
+            series_num = get_numeric_value(entry, "SeriesNumber")
             
             return not (acq_time == float('inf') and acq_num == float('inf') and temp_pos == float('inf') and 
-                       trigger_time == float('inf') and frame_ref_time == float('inf'))
+                       trigger_time == float('inf') and frame_ref_time == float('inf') and series_num == float('inf'))
         
         def extract_folder_name(dicom_path, series_description=""):
             """Extract the scan folder name from DicomPath by finding the path
@@ -464,14 +465,16 @@ class FilteringStage:
             temp_pos = get_numeric_value(entry, "TemporalPositionIdentifier", is_int=True)
             trigger_time = get_numeric_value(entry, "TriggerTime")
             frame_ref_time = get_numeric_value(entry, "FrameReferenceTime")
+            series_num = get_numeric_value(entry, "SeriesNumber")
             folder_nums = extract_numbers_from_folder(
                 extract_folder_name(entry.get("DicomPath", ""), entry.get("SeriesDescription", ""))
             )
             folder_num = folder_nums[0] if folder_nums else float('inf')
-            return (acq_time, acq_num, temp_pos, trigger_time, frame_ref_time, folder_num)
+            return (acq_time, acq_num, temp_pos, trigger_time, frame_ref_time, series_num, folder_num)
         
         sorted_valid = sorted(valid_timing_entries, key=sort_key)
         
+        # Check if we can remove this part and use series number as a tiebreaker instead of folder name.
         # Analyze folder names to determine order pattern
         if sorted_valid:
             folder_names = [extract_folder_name(entry.get("DicomPath", ""), entry.get("SeriesDescription", "")) for entry in sorted_valid]

@@ -47,6 +47,7 @@ class DicomMetadataExtractor:
                 "SeriesInstanceUID": get_value("SeriesInstanceUID"),
                 "ImageType": get_value("ImageType"),
                 "ScanningSequence": get_value("ScanningSequence"),
+                "SeriesNumber": get_value("SeriesNumber"),
                 "SequenceVariant": get_value("SequenceVariant"),
                 "RepetitionTime": get_value("RepetitionTime"),
                 "EchoTime": get_value("EchoTime"),
