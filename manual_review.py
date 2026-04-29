@@ -543,15 +543,9 @@ class FlaggedCaseProcessor:
             print(f"✗ No sequences found for {patient_id}")
             return []
 
-        # Sort by StudyDate → SeriesNumber → AcquisitionNumber → DicomPath
-        def _sort_key(e):
-            return (
-                e.get('StudyDate') or e.get('SeriesDate') or e.get('AcquisitionDate') or '',
-                int(e['SeriesNumber']) if str(e.get('SeriesNumber', '')).isdigit() else 0,
-                int(e['AcquisitionNumber']) if str(e.get('AcquisitionNumber', '')).isdigit() else 0,
-                e.get('DicomPath') or e.get('dicom_file') or '',
-            )
-        all_entries = sorted(all_entries, key=_sort_key)
+        # Sort using the same intelligent mechanism as stage2_filter (folder-name
+        # pattern detection, timing fields, None-entry placement)
+        all_entries = FilteringStage().sort_entries(all_entries)
         
         # Find common prefix of all DicomPaths to identify where they first differ
         dicom_paths = [entry.get('DicomPath', entry.get('dicom_file', '')) for entry in all_entries]
@@ -566,10 +560,28 @@ class FlaggedCaseProcessor:
             # Extract scan folder based on where paths first differ
             scan_folder = self._extract_scan_folder(dicom_path, common_prefix)
             
-            # Show series description if available
+            # Extract raw folder name from path (segment containing SeriesDescription)
             series_desc = entry.get('SeriesDescription', '')
-            if series_desc:
+            folder_name = ""
+            if dicom_path and dicom_path != 'N/A':
+                segments = [p for p in dicom_path.split("/") if p]
+                if series_desc:
+                    for seg in segments:
+                        if series_desc.lower() in seg.lower():
+                            folder_name = seg
+                            break
+                if not folder_name and "/scans/" in dicom_path:
+                    parts = dicom_path.split("/scans/")
+                    if len(parts) > 1:
+                        folder_name = parts[1].split("/")[0]
+            
+            # Show series description and folder name if available
+            if series_desc and folder_name and folder_name != scan_folder:
+                print(f"  [{idx}] {scan_folder} - {series_desc}  (folder: {folder_name})")
+            elif series_desc:
                 print(f"  [{idx}] {scan_folder} - {series_desc}")
+            elif folder_name and folder_name != scan_folder:
+                print(f"  [{idx}] {scan_folder}  (folder: {folder_name})")
             else:
                 print(f"  [{idx}] {scan_folder}")
             
