@@ -465,12 +465,8 @@ class FilteringStage:
             temp_pos = get_numeric_value(entry, "TemporalPositionIdentifier", is_int=True)
             trigger_time = get_numeric_value(entry, "TriggerTime")
             frame_ref_time = get_numeric_value(entry, "FrameReferenceTime")
-            series_num = get_numeric_value(entry, "SeriesNumber")
-            folder_nums = extract_numbers_from_folder(
-                extract_folder_name(entry.get("DicomPath", ""), entry.get("SeriesDescription", ""))
-            )
-            folder_num = folder_nums[0] if folder_nums else float('inf')
-            return (acq_time, acq_num, temp_pos, trigger_time, frame_ref_time, series_num, folder_num)
+            series_num = get_numeric_value(entry, "SeriesNumber", is_int=True)
+            return (acq_time, acq_num, temp_pos, trigger_time, frame_ref_time, series_num)
         
         sorted_valid = sorted(valid_timing_entries, key=sort_key)
         
@@ -504,18 +500,30 @@ class FilteringStage:
                     is_decreasing = True
             
             # Place None entries based on detected/fixed pattern
+            def final_folder_key(e):
+                folder = extract_folder_name(e.get("DicomPath", ""), e.get("SeriesDescription", ""))
+                # Only trust folder numbers when the folder name starts with a digit
+                # (i.e., it's a numbered scan folder like '9-t1_fl3d_tra_...')
+                if folder and folder[0].isdigit():
+                    nums = extract_numbers_from_folder(folder)
+                    if nums:
+                        return [nums[0]]
+                # Fallback: use SeriesNumber to preserve timing-based order
+                sn = get_numeric_value(e, "SeriesNumber", is_int=True)
+                return [int(sn)] if sn != float('inf') else [999999]
+
             if is_increasing or not is_decreasing:
                 # Increasing pattern: sort None entries in increasing order
                 sorted_valid = sorted(
                     none_entries + sorted_valid,
-                    key=lambda e: extract_numbers_from_folder(extract_folder_name(e.get("DicomPath", ""), e.get("SeriesDescription", "")))
+                    key=final_folder_key
                 )
                 return sorted_valid
             else:
                 # Decreasing pattern: sort None entries in decreasing order
                 sorted_valid = sorted(
                     none_entries + sorted_valid,
-                    key=lambda e: extract_numbers_from_folder(extract_folder_name(e.get("DicomPath", ""), e.get("SeriesDescription", ""))),
+                    key=final_folder_key,
                     reverse=True
                 )
                 return sorted_valid 

@@ -577,7 +577,7 @@ class FlaggedCaseProcessor:
             
             # Show series description and folder name if available
             if series_desc and folder_name and folder_name != scan_folder:
-                print(f"  [{idx}] {scan_folder} - {series_desc}  (folder: {folder_name})")
+                print(f"  [{idx}] {scan_folder} - {folder_name}")
             elif series_desc:
                 print(f"  [{idx}] {scan_folder} - {series_desc}")
             elif folder_name and folder_name != scan_folder:
@@ -603,6 +603,8 @@ class FlaggedCaseProcessor:
                 params.append(f"AcqNum={entry['AcquisitionNumber']}")
             if 'TemporalPositionIdentifier' in entry and entry['TemporalPositionIdentifier']:
                 params.append(f"TempPos={entry['TemporalPositionIdentifier']}")
+            if 'SeriesNumber' in entry and entry['SeriesNumber']:
+                params.append(f"SeriesNum={entry['SeriesNumber']}")
             
             if params:
                 print(f"           {', '.join(params)}")
